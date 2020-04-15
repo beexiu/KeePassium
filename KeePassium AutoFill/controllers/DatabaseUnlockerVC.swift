@@ -13,7 +13,12 @@ protocol DatabaseUnlockerDelegate: class {
         _ sender: DatabaseUnlockerVC,
         database: URLReference,
         password: String,
-        keyFile: URLReference?)
+        keyFile: URLReference?,
+        yubiKey: YubiKey?)
+    func didPressNewsItem(in databaseUnlocker: DatabaseUnlockerVC, newsItem: NewsItem)
+    func didPressSelectHardwareKey(
+        in databaseUnlocker: DatabaseUnlockerVC,
+        at popoverAnchor: PopoverAnchor)
 }
 
 class DatabaseUnlockerVC: UIViewController, Refreshable {
@@ -25,7 +30,9 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
     @IBOutlet weak var databaseFileNameLabel: UILabel!
     @IBOutlet weak var inputPanel: UIView!
     @IBOutlet weak var passwordField: ProtectedTextField!
-    @IBOutlet weak var keyFileField: UITextField!
+    @IBOutlet weak var keyFileField: KeyFileTextField!
+    @IBOutlet weak var announcementButton: UIButton!
+    @IBOutlet weak var unlockButton: UIButton!
     
     weak var coordinator: MainCoordinator?
     weak var delegate: DatabaseUnlockerDelegate?
@@ -34,19 +41,31 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
         didSet { refresh() }
     }
     private(set) var keyFileRef: URLReference?
+    private(set) var yubiKey: YubiKey?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
         view.backgroundColor = UIColor(patternImage: UIImage(asset: .backgroundPattern))
         view.layer.isOpaque = false
+        unlockButton.titleLabel?.adjustsFontForContentSizeCategory = true
         
         errorMessagePanel.alpha = 0.0
+        errorMessagePanel.isHidden = true
         
         refresh()
         
-        keyFileField.delegate = self
         passwordField.delegate = self
+        keyFileField.delegate = self
+        
+        keyFileField.yubikeyHandler = {
+            [weak self] (field) in
+            guard let self = self else { return }
+            let popoverAnchor = PopoverAnchor(
+                sourceView: self.keyFileField,
+                sourceRect: self.keyFileField.bounds)
+            self.delegate?.didPressSelectHardwareKey(in: self, at: popoverAnchor)
+        }
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -59,8 +78,25 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
         }
     }
     
-    func showErrorMessage(text: String) {
+    public func clearPasswordField() {
+        passwordField.text = ""
+    }
+    
+    func showErrorMessage(
+        _ text: String,
+        reason: String?=nil,
+        suggestion: String?=nil,
+        haptics: HapticFeedback.Kind?=nil
+    ) {
+        let text = [text, reason, suggestion]
+            .compactMap { return $0 } 
+            .joined(separator: "\n")
         errorMessageLabel.text = text
+        Diag.error(text)
+        UIAccessibility.post(notification: .announcement, argument: text)
+        
+        guard errorMessagePanel.isHidden else { return }
+
         UIView.animate(
             withDuration: 0.3,
             delay: 0.0,
@@ -68,15 +104,21 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             animations: {
                 [weak self] in
                 self?.errorMessagePanel.alpha = 1.0
+                self?.errorMessagePanel.isHidden = false
             },
             completion: {
                 [weak self] (finished) in
                 self?.errorMessagePanel.shake()
+                if let hapticsKind = haptics {
+                    HapticFeedback.play(hapticsKind)
+                }
             }
         )
     }
     
     func hideErrorMessage(animated: Bool) {
+        guard !errorMessagePanel.isHidden else { return }
+
         if animated {
             UIView.animate(
                 withDuration: 0.3,
@@ -85,6 +127,7 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
                 animations: {
                     [weak self] in
                     self?.errorMessagePanel.alpha = 0.0
+                    self?.errorMessagePanel.isHidden = true
                 },
                 completion: {
                     [weak self] (finished) in
@@ -93,16 +136,19 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             )
         } else {
             errorMessagePanel.alpha = 0.0
+            errorMessagePanel.isHidden = true
             errorMessageLabel.text = " "
         }
     }
 
     func showMasterKeyInvalid(message: String) {
-        showErrorMessage(text: message)
+        showErrorMessage(message, haptics: .wrongPassword)
     }
     
     func refresh() {
         guard isViewLoaded else { return }
+        refreshNews()
+        
         guard let dbRef = databaseRef else {
             databaseLocationIconImage.image = nil
             databaseFileNameLabel.text = ""
@@ -119,7 +165,8 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             databaseLocationIconImage.image = UIImage.databaseIcon(for: dbRef)
         }
         
-        if let associatedKeyFileRef = Settings.current.getKeyFileForDatabase(databaseRef: dbRef) {
+        let dbSettings = DatabaseSettingsManager.shared.getSettings(for: dbRef)
+        if let associatedKeyFileRef = dbSettings?.associatedKeyFile {
             let allAvailableKeyFiles = FileKeeper.shared
                 .getAllReferences(fileType: .keyFile, includeBackup: false)
             if let availableKeyFileRef = associatedKeyFileRef
@@ -127,6 +174,25 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             {
                 setKeyFile(urlRef: availableKeyFileRef)
             }
+        }
+
+        if let associatedYubiKey = dbSettings?.associatedYubiKey {
+            setYubiKey(associatedYubiKey)
+        }
+    }
+    
+    func setYubiKey(_ yubiKey: YubiKey?) {
+        self.yubiKey = yubiKey
+        keyFileField.isYubiKeyActive = (yubiKey != nil)
+
+        guard let databaseRef = databaseRef else { assertionFailure(); return }
+        DatabaseSettingsManager.shared.updateSettings(for: databaseRef) { (dbSettings) in
+            dbSettings.maybeSetAssociatedYubiKey(yubiKey)
+        }
+        if let _yubiKey = yubiKey {
+            Diag.info("Hardware key selected [key: \(_yubiKey)]")
+        } else {
+            Diag.info("No hardware key selected")
         }
     }
     
@@ -136,7 +202,9 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
         hideErrorMessage(animated: false)
 
         guard let databaseRef = databaseRef else { return }
-        Settings.current.setKeyFileForDatabase(databaseRef: databaseRef, keyFileRef: keyFileRef)
+        DatabaseSettingsManager.shared.updateSettings(for: databaseRef) { (dbSettings) in
+            dbSettings.maybeSetAssociatedKeyFile(keyFileRef)
+        }
         
         guard let fileInfo = urlRef?.info else {
             Diag.debug("No key file selected")
@@ -144,9 +212,14 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             return
         }
         if let errorDetails = fileInfo.errorMessage {
-            let errorMessage = NSLocalizedString("Key file error: \(errorDetails)", comment: "Error message related to key file")
+            let errorMessage = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database/Unlock] Key file error: %@",
+                    value: "Key file error: %@",
+                    comment: "Error message related to key file. [errorDetails: String]"),
+                errorDetails)
             Diag.warning(errorMessage)
-            showErrorMessage(text: errorMessage)
+            showErrorMessage(errorMessage)
             keyFileField.text = ""
         } else {
             Diag.info("Key file set successfully")
@@ -180,6 +253,22 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
 
     
     
+    private var newsItem: NewsItem?
+    
+    private func refreshNews() {
+        let nc = NewsCenter.shared
+        if let newsItem = nc.getTopItem() {
+            announcementButton.titleLabel?.numberOfLines = 0
+            announcementButton.setTitle(newsItem.title, for: .normal)
+            announcementButton.isHidden = false
+            self.newsItem = newsItem
+        } else {
+            announcementButton.isHidden = true
+            self.newsItem = nil
+        }
+    }
+    
+    
     @IBAction func didPressErrorDetailsButton(_ sender: Any) {
         Watchdog.shared.restart()
         coordinator?.showDiagnostics()
@@ -192,8 +281,13 @@ class DatabaseUnlockerVC: UIViewController, Refreshable {
             self,
             database: databaseRef,
             password: passwordField.text ?? "",
-            keyFile: keyFileRef)
-        passwordField.text = "" 
+            keyFile: keyFileRef,
+            yubiKey: yubiKey)
+    }
+    
+    @IBAction func didPressAnouncementButton(_ sender: Any) {
+        guard let newsItem = newsItem else { return }
+        delegate?.didPressNewsItem(in: self, newsItem: newsItem)
     }
 }
 

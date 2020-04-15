@@ -43,6 +43,8 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
     
     private let fileInfoReloader = FileInfoReloader()
     
+    private let premiumUpgradeHelper = PremiumUpgradeHelper()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -60,9 +62,14 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         
         clearsSelectionOnViewWillAppear = false
         
+        let longPressGestureRecognizer = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(didLongPressTableView))
+        tableView.addGestureRecognizer(longPressGestureRecognizer)
+        
         updateDetailView(onlyInTwoPaneMode: false)
     }
-
+    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.isToolbarHidden = false
@@ -73,7 +80,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         guard let splitVC = splitViewController else { fatalError() }
         if !splitVC.isCollapsed {
             navigationItem.backBarButtonItem = UIBarButtonItem(
-                title: NSLocalizedString("Close", comment: "Button to close currently opened database, when leaving the root group"),
+                title: LString.actionCloseDatabase,
                 style: .plain,
                 target: nil,
                 action: nil
@@ -100,6 +107,12 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
 
         if databaseRefs.isEmpty {
             databaseUnlocker = nil
+            let rootNavVC = splitViewController?.viewControllers.last as? UINavigationController
+            let detailNavVC = rootNavVC?.topViewController as? UINavigationController
+            let topDetailVC = detailNavVC?.topViewController
+            if topDetailVC is WelcomeVC {
+                return
+            }
             let welcomeVC = WelcomeVC.make(delegate: self)
             let wrapperNavVC = UINavigationController(rootViewController: welcomeVC)
             showDetailViewController(wrapperNavVC, sender: self)
@@ -147,6 +160,47 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         tableView.reloadData()
     }
     
+    private func getDeleteActionName(for urlRef: URLReference) -> String {
+        let fileInfo = urlRef.getInfo()
+        if urlRef.location == .external || fileInfo.hasError {
+            return LString.actionRemoveFile
+        } else {
+            return LString.actionDeleteFile
+        }
+    }
+    
+    private func showActions(for indexPath: IndexPath) {
+        let urlRef = databaseRefs[indexPath.row]
+        let exportAction = UIAlertAction(
+            title: LString.actionExport,
+            style: .default,
+            handler: { [weak self] alertAction in
+                self?.didPressExportDatabase(at: indexPath)
+            }
+        )
+        let deleteAction = UIAlertAction(
+            title: getDeleteActionName(for: urlRef),
+            style: .destructive,
+            handler: { [weak self] alertAction in
+                self?.didPressDeleteDatabase(at: indexPath)
+            }
+        )
+        let cancelAction = UIAlertAction(title: LString.actionCancel, style: .cancel, handler: nil)
+        
+        let menu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        menu.addAction(exportAction)
+        menu.addAction(deleteAction)
+        menu.addAction(cancelAction)
+        
+        let popoverAnchor = PopoverAnchor(tableView: tableView, at: indexPath)
+        if let popover = menu.popoverPresentationController {
+            popoverAnchor.apply(to: popover)
+            popover.permittedArrowDirections = [.left]
+        }
+        present(menu, animated: true)
+    }
+    
+    
     
     @IBAction func didPressSortButton(_ sender: Any) {
         let vc = SettingsFileSortingVC.make(popoverFromBar: sender as? UIBarButtonItem)
@@ -164,7 +218,28 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         showDetailViewController(aboutVC, sender: self)
     }
     
+    @objc func didLongPressTableView(_ gestureRecognizer: UILongPressGestureRecognizer) {
+        let point = gestureRecognizer.location(in: tableView)
+        guard gestureRecognizer.state == .began,
+            let indexPath = tableView.indexPathForRow(at: point),
+            tableView(tableView, canEditRowAt: indexPath)
+            else { return }
+        showActions(for: indexPath)
+    }
+
     @IBAction func didPressAddDatabase(_ sender: Any) {
+        let nonBackupDatabaseRefs = databaseRefs.filter { $0.location != .internalBackup }
+        if nonBackupDatabaseRefs.count > 0 {
+            premiumUpgradeHelper.performActionOrOfferUpgrade(.canUseMultipleDatabases, in: self) {
+                [weak self] in
+                self?.handleDidPressAddDatabase()
+            }
+        } else {
+            handleDidPressAddDatabase()
+        }
+    }
+    
+    private func handleDidPressAddDatabase() {
         let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         
         actionSheet.addAction(UIAlertAction(title: LString.actionOpenDatabase, style: .default) {
@@ -191,7 +266,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
     
     func didPressOpenDatabase() {
         let picker = UIDocumentPickerViewController(
-            documentTypes: FileType.publicDataUTIs,
+            documentTypes: FileType.databaseUTIs,
             in: .open)
         picker.delegate = self
         picker.modalPresentationStyle = .pageSheet
@@ -233,7 +308,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         } catch {
             Diag.error("Failed to resolve URL reference [message: \(error.localizedDescription)]")
             let alert = UIAlertController.make(
-                title: LString.titleExportError,
+                title: LString.titleFileExportError,
                 message: error.localizedDescription)
             present(alert, animated: true, completion: nil)
         }
@@ -281,6 +356,10 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
     
     private func didSelectDatabase(urlRef: URLReference) {
         Settings.current.startupDatabase = urlRef
+        if databaseUnlocker != nil {
+            databaseUnlocker?.databaseRef = urlRef
+            return
+        }
         let unlockDatabaseVC = UnlockDatabaseVC.make(databaseRef: urlRef)
         showDetailViewController(unlockDatabaseVC, sender: self)
         databaseUnlocker = unlockDatabaseVC
@@ -292,7 +371,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
             Settings.current.startupDatabase = nil
         }
 
-        try? Keychain.shared.removeDatabaseKey(databaseRef: urlRef) 
+        DatabaseSettingsManager.shared.removeSettings(for: urlRef)
         do {
             let fileInfo = urlRef.getInfo()
             try FileKeeper.shared.deleteFile(
@@ -313,7 +392,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         if urlRef == Settings.current.startupDatabase {
             Settings.current.startupDatabase = nil
         }
-        try? Keychain.shared.removeDatabaseKey(databaseRef: urlRef) 
+        DatabaseSettingsManager.shared.removeSettings(for: urlRef)
         FileKeeper.shared.removeExternalReference(urlRef, fileType: .database)
     }
     
@@ -370,8 +449,8 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         accessoryButtonTappedForRowWith indexPath: IndexPath)
     {
         let urlRef = databaseRefs[indexPath.row]
-        guard let cell = tableView.cellForRow(at: indexPath) else { assertionFailure(); return }
-        let databaseInfoVC = FileInfoVC.make(urlRef: urlRef, popoverSource: cell)
+        let popoverAnchor = PopoverAnchor(tableView: tableView, at: indexPath)
+        let databaseInfoVC = FileInfoVC.make(urlRef: urlRef, at: popoverAnchor)
         present(databaseInfoVC, animated: true, completion: nil)
     }
     
@@ -395,17 +474,9 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
         shareAction.backgroundColor = UIColor.actionTint
         
         let urlRef = databaseRefs[indexPath.row]
-        let fileInfo = urlRef.getInfo()
-        let deleteActionTitle: String
-        if urlRef.location == .external || fileInfo.hasError {
-            deleteActionTitle = LString.actionRemoveFile
-        } else {
-            deleteActionTitle = LString.actionDeleteFile
-        }
-        
         let deleteAction = UITableViewRowAction(
             style: .destructive,
-            title: deleteActionTitle)
+            title: getDeleteActionName(for: urlRef))
         {
             [unowned self] (_,_) in
             self.setEditing(false, animated: true)
@@ -420,7 +491,7 @@ class ChooseDatabaseVC: UITableViewController, Refreshable {
 extension ChooseDatabaseVC: SettingsObserver {
     func settingsDidChange(key: Settings.Keys) {
         if key == .filesSortOrder || key == .backupFilesVisible {
-            sortFileList()
+            refresh()
         }
     }
 }
@@ -450,11 +521,15 @@ extension ChooseDatabaseVC: UIDocumentPickerDelegate {
         guard let url = urls.first else { return }
         guard FileType.isDatabaseFile(url: url) else {
             let fileName = url.lastPathComponent
+            let errorMessage = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database/Add] Selected file \"%@\" does not look like a database.",
+                    value: "Selected file \"%@\" does not look like a database.",
+                    comment: "Warning when trying to add a random file as a database. [fileName: String]"),
+                fileName)
             let errorAlert = UIAlertController.make(
                 title: LString.titleWarning,
-                message: NSLocalizedString(
-                    "Selected file \"\(fileName)\" does not look like a database.",
-                    comment: "Warning when trying to add a file"),
+                message: errorMessage,
                 cancelButtonTitle: LString.actionOK)
             present(errorAlert, animated: true, completion: nil)
             return
@@ -469,6 +544,7 @@ extension ChooseDatabaseVC: UIDocumentPickerDelegate {
             assertionFailure("Unexpected document picker mode")
         }
         processPendingFileOperations()
+        navigationController?.popToViewController(self, animated: true) 
     }
 }
 
@@ -486,6 +562,7 @@ extension ChooseDatabaseVC: DatabaseCreatorCoordinatorDelegate {
         presentedViewController?.dismiss(animated: true) { 
             self.databaseCreatorCoordinator = nil
         }
+        navigationController?.popToViewController(self, animated: true) 
         Settings.current.startupDatabase = urlRef
         updateDetailView(onlyInTwoPaneMode: false)
     }

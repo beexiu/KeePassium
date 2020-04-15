@@ -10,7 +10,22 @@
 		7505E8CB2236C93300E5202E /* TOTPGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7505E8CA2236C93300E5202E /* TOTPGenerator.swift */; };
 		7505E8CF2236ED6E00E5202E /* Base32.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7505E8CE2236ED6E00E5202E /* Base32.swift */; };
 		7505E8D12236FA0F00E5202E /* StringExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7505E8D02236FA0F00E5202E /* StringExtension.swift */; };
-		75C764E4226F475500025F8B /* KeePassiumLib.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 75D0C76A2174AF1F00C64C93 /* KeePassiumLib.framework */; };
+		750935C4235219B900A362C8 /* Observable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 750935C3235219B900A362C8 /* Observable.swift */; };
+		75134CFC23C0F02C0065CD10 /* DatabaseItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75134CFB23C0F02C0065CD10 /* DatabaseItem.swift */; };
+		751E0CDF2309A3420088BB10 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 751E0CDD2309A3420088BB10 /* Localizable.strings */; };
+		751E0D68230D12660088BB10 /* Bundle+extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 751E0D67230D12660088BB10 /* Bundle+extensions.swift */; };
+		75205FA3239BDB6700C1DEAA /* DatabaseSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75205FA2239BDB6700C1DEAA /* DatabaseSettings.swift */; };
+		75205FA5239C01CF00C1DEAA /* DatabaseSettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75205FA4239C01CF00C1DEAA /* DatabaseSettingsManager.swift */; };
+		7538167E22B15FC7000FA4BD /* Settings+premium.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7538167D22B15FC7000FA4BD /* Settings+premium.swift */; };
+		75384B9922CCB76800157598 /* UsageMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75384B9822CCB76800157598 /* UsageMonitor.swift */; };
+		75393ABA238D3AC400C63C54 /* ChallengeResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75393AB9238D3AC400C63C54 /* ChallengeResponse.swift */; };
+		754D7C0E238C26A7005652E1 /* YubiKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 754D7C0D238C26A7005652E1 /* YubiKey.swift */; };
+		7558700722E5857C00E1DD89 /* TOTPGeneratorFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7558700622E5857C00E1DD89 /* TOTPGeneratorFactory.swift */; };
+		755E7DA7232021460010E199 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 755E7DA5232021460010E199 /* InfoPlist.strings */; };
+		757CB44223993E48000867F0 /* DatabaseSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 757CB44123993E48000867F0 /* DatabaseSettings.swift */; };
+		759896432341CED300DF39AA /* BusinessModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 759896422341CED300DF39AA /* BusinessModel.swift */; };
+		75A26770228DAC440097C693 /* PremiumManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2676F228DAC430097C693 /* PremiumManager.swift */; };
+		75A2677B229045A60097C693 /* PremiumFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75A2677A229045A60097C693 /* PremiumFeature.swift */; };
 		75D09B8E2174F02F00F7DEF2 /* Salsa20.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75D09B6B2174F02F00F7DEF2 /* Salsa20.swift */; };
 		75D09BA32174F02F00F7DEF2 /* salsa20.h in Headers */ = {isa = PBXBuildFile; fileRef = 75D09B852174F02F00F7DEF2 /* salsa20.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		75D09BA42174F02F00F7DEF2 /* salsa20.c in Sources */ = {isa = PBXBuildFile; fileRef = 75D09B862174F02F00F7DEF2 /* salsa20.c */; };
@@ -95,6 +110,7 @@
 		75D09C602174F81900F7DEF2 /* Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75D09C562174F81900F7DEF2 /* Parser.swift */; };
 		75D09C622174F89A00F7DEF2 /* ProgressEx.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75D09C612174F89A00F7DEF2 /* ProgressEx.swift */; };
 		75D0C77B2174AF2000C64C93 /* KeePassiumLib.h in Headers */ = {isa = PBXBuildFile; fileRef = 75D0C76D2174AF1F00C64C93 /* KeePassiumLib.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		75D4080523952FD40042122A /* CompositeKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75D4080423952FD40042122A /* CompositeKey.swift */; };
 		75EA2D1721B2FB4000826FC6 /* Diag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EA2D1621B2FB4000826FC6 /* Diag.swift */; };
 		75F4ACD22177456200B22D8B /* PasswordGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F4ACD12177456200B22D8B /* PasswordGenerator.swift */; };
 		75F4ACD5217745B300B22D8B /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F4ACD3217745B300B22D8B /* DatabaseManager.swift */; };
@@ -116,21 +132,35 @@
 		75F594B8221BDC51001729FD /* SettingsMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F594B7221BDC51001729FD /* SettingsMigrator.swift */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		75C764E5226F475500025F8B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 75D0C7612174AF1F00C64C93 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 75D0C7692174AF1F00C64C93;
-			remoteInfo = KeePassiumLib;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
+		7502613D243E970000C47F4F /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
 		7505E8CA2236C93300E5202E /* TOTPGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGenerator.swift; sourceTree = "<group>"; };
 		7505E8CE2236ED6E00E5202E /* Base32.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Base32.swift; sourceTree = "<group>"; };
 		7505E8D02236FA0F00E5202E /* StringExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StringExtension.swift; sourceTree = "<group>"; };
-		75C764DF226F475500025F8B /* KeePassiumLibTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeePassiumLibTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		750935C3235219B900A362C8 /* Observable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Observable.swift; sourceTree = "<group>"; };
+		75134CFB23C0F02C0065CD10 /* DatabaseItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseItem.swift; sourceTree = "<group>"; };
+		751E0CDE2309A3420088BB10 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		751E0D63230B49190088BB10 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/Localizable.strings; sourceTree = "<group>"; };
+		751E0D67230D12660088BB10 /* Bundle+extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bundle+extensions.swift"; sourceTree = "<group>"; };
+		75205FA2239BDB6700C1DEAA /* DatabaseSettings.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = DatabaseSettings.swift; sourceTree = "<group>"; };
+		75205FA4239C01CF00C1DEAA /* DatabaseSettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseSettingsManager.swift; sourceTree = "<group>"; };
+		7538167D22B15FC7000FA4BD /* Settings+premium.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Settings+premium.swift"; sourceTree = "<group>"; };
+		75384B9822CCB76800157598 /* UsageMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageMonitor.swift; sourceTree = "<group>"; };
+		75393AB9238D3AC400C63C54 /* ChallengeResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChallengeResponse.swift; sourceTree = "<group>"; };
+		754D7C0D238C26A7005652E1 /* YubiKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = YubiKey.swift; path = ../../../../../../projects/xcode/KeePassium/KeePassiumLib/KeePassiumLib/util/YubiKey.swift; sourceTree = "<group>"; };
+		7558700622E5857C00E1DD89 /* TOTPGeneratorFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOTPGeneratorFactory.swift; sourceTree = "<group>"; };
+		755E7DA6232021460010E199 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		757CB44123993E48000867F0 /* DatabaseSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseSettings.swift; sourceTree = "<group>"; };
+		759896422341CED300DF39AA /* BusinessModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BusinessModel.swift; path = ../../../../../../projects/xcode/KeePassium/KeePassiumLib/KeePassiumLib/premium/BusinessModel.swift; sourceTree = "<group>"; };
+		75A2676F228DAC430097C693 /* PremiumManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumManager.swift; sourceTree = "<group>"; };
+		75A2677A229045A60097C693 /* PremiumFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumFeature.swift; sourceTree = "<group>"; };
+		75AC35BB23549D6C00B60614 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+		75AC53472326FCC6000AA4FB /* nl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nl; path = nl.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		75AC53482326FCC6000AA4FB /* nl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = nl; path = nl.lproj/Localizable.strings; sourceTree = "<group>"; };
+		75AC53492326FCDB000AA4FB /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		75AC534A2326FCDB000AA4FB /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		75AC53A1232766EB000AA4FB /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		75AC53A2232766EB000AA4FB /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		75D09B6B2174F02F00F7DEF2 /* Salsa20.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Salsa20.swift; sourceTree = "<group>"; };
 		75D09B852174F02F00F7DEF2 /* salsa20.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = salsa20.h; path = KeePassiumLib/crypto/salsa20/salsa20.h; sourceTree = SOURCE_ROOT; };
 		75D09B862174F02F00F7DEF2 /* salsa20.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = salsa20.c; sourceTree = "<group>"; };
@@ -218,6 +248,8 @@
 		75D0C76A2174AF1F00C64C93 /* KeePassiumLib.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = KeePassiumLib.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		75D0C76D2174AF1F00C64C93 /* KeePassiumLib.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeePassiumLib.h; sourceTree = "<group>"; };
 		75D0C76E2174AF1F00C64C93 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		75D4080423952FD40042122A /* CompositeKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositeKey.swift; sourceTree = "<group>"; };
+		75E4CA89232D0B2200EB6805 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		75EA2D1621B2FB4000826FC6 /* Diag.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Diag.swift; sourceTree = "<group>"; };
 		75F4ACC1217743BF00B22D8B /* DiagLib.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = DiagLib.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		75F4ACD12177456200B22D8B /* PasswordGenerator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PasswordGenerator.swift; sourceTree = "<group>"; };
@@ -238,17 +270,11 @@
 		75F4ACF121774A6300B22D8B /* Clipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clipboard.swift; sourceTree = "<group>"; };
 		75F4ACF221774A6300B22D8B /* URL+extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+extensions.swift"; sourceTree = "<group>"; };
 		75F594B7221BDC51001729FD /* SettingsMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigrator.swift; sourceTree = "<group>"; };
+		75FDEF1D233ABE7800F17C26 /* cs */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = cs; path = cs.lproj/Localizable.strings; sourceTree = "<group>"; };
+		75FDEF49233ABED700F17C26 /* sv */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = sv; path = sv.lproj/Localizable.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		75C764DC226F475500025F8B /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				75C764E4226F475500025F8B /* KeePassiumLib.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		75D0C7672174AF1F00C64C93 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -263,6 +289,7 @@
 			isa = PBXGroup;
 			children = (
 				7505E8CA2236C93300E5202E /* TOTPGenerator.swift */,
+				7558700622E5857C00E1DD89 /* TOTPGeneratorFactory.swift */,
 			);
 			path = totp;
 			sourceTree = "<group>";
@@ -274,6 +301,26 @@
 				7505E8CE2236ED6E00E5202E /* Base32.swift */,
 			);
 			path = base32;
+			sourceTree = "<group>";
+		};
+		7571D5882393F7420045E760 /* challenge */ = {
+			isa = PBXGroup;
+			children = (
+				75393AB9238D3AC400C63C54 /* ChallengeResponse.swift */,
+			);
+			path = challenge;
+			sourceTree = "<group>";
+		};
+		75A267792290458E0097C693 /* premium */ = {
+			isa = PBXGroup;
+			children = (
+				75A2676F228DAC430097C693 /* PremiumManager.swift */,
+				75A2677A229045A60097C693 /* PremiumFeature.swift */,
+				7538167D22B15FC7000FA4BD /* Settings+premium.swift */,
+				75384B9822CCB76800157598 /* UsageMonitor.swift */,
+				759896422341CED300DF39AA /* BusinessModel.swift */,
+			);
+			path = premium;
 			sourceTree = "<group>";
 		};
 		75D09B6A2174F02F00F7DEF2 /* crypto */ = {
@@ -365,16 +412,19 @@
 			children = (
 				7505E8CC2236E69F00E5202E /* totp */,
 				75D09BE82174F77000F7DEF2 /* kdf */,
+				7571D5882393F7420045E760 /* challenge */,
 				75D09C082174F77000F7DEF2 /* cipher */,
 				75D09C122174F77000F7DEF2 /* kp1 */,
 				75D09BEE2174F77000F7DEF2 /* kp2 */,
 				75F4ACE6217746FF00B22D8B /* util */,
 				75D09C192174F77000F7DEF2 /* Database.swift */,
+				75134CFB23C0F02C0065CD10 /* DatabaseItem.swift */,
 				75D09C1A2174F77000F7DEF2 /* Group.swift */,
 				75D09C102174F77000F7DEF2 /* Entry.swift */,
 				75D09C072174F77000F7DEF2 /* KeyHelper.swift */,
 				75D09BED2174F77000F7DEF2 /* Attachment.swift */,
 				75D09BFB2174F77000F7DEF2 /* IconID.swift */,
+				75D4080423952FD40042122A /* CompositeKey.swift */,
 			);
 			path = db;
 			sourceTree = "<group>";
@@ -424,6 +474,12 @@
 				75F4ACED217749DB00B22D8B /* UserDefaults+appGroupShared.swift */,
 				75F4ACF221774A6300B22D8B /* URL+extensions.swift */,
 				75F4ACE92177485D00B22D8B /* Weak.swift */,
+				751E0D67230D12660088BB10 /* Bundle+extensions.swift */,
+				750935C3235219B900A362C8 /* Observable.swift */,
+				75205FA2239BDB6700C1DEAA /* DatabaseSettings.swift */,
+				75205FA4239C01CF00C1DEAA /* DatabaseSettingsManager.swift */,
+				754D7C0D238C26A7005652E1 /* YubiKey.swift */,
+				757CB44123993E48000867F0 /* DatabaseSettings.swift */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -488,7 +544,6 @@
 			isa = PBXGroup;
 			children = (
 				75D0C76A2174AF1F00C64C93 /* KeePassiumLib.framework */,
-				75C764DF226F475500025F8B /* KeePassiumLibTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -496,6 +551,7 @@
 		75D0C76C2174AF1F00C64C93 /* KeePassiumLib */ = {
 			isa = PBXGroup;
 			children = (
+				75A267792290458E0097C693 /* premium */,
 				75F4ACD72177469500B22D8B /* files */,
 				75D09B6A2174F02F00F7DEF2 /* crypto */,
 				75D09BE72174F77000F7DEF2 /* db */,
@@ -510,6 +566,8 @@
 				75D09BAD2174F3E600F7DEF2 /* KeePassiumLib.m */,
 				75D09BAC2174F3E600F7DEF2 /* KeePassiumLib.modulemap */,
 				75D0C76E2174AF1F00C64C93 /* Info.plist */,
+				755E7DA5232021460010E199 /* InfoPlist.strings */,
+				751E0CDD2309A3420088BB10 /* Localizable.strings */,
 			);
 			path = KeePassiumLib;
 			sourceTree = "<group>";
@@ -579,28 +637,11 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		75C764DE226F475500025F8B /* KeePassiumLibTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 75C764E7226F475500025F8B /* Build configuration list for PBXNativeTarget "KeePassiumLibTests" */;
-			buildPhases = (
-				75C764DB226F475500025F8B /* Sources */,
-				75C764DC226F475500025F8B /* Frameworks */,
-				75C764DD226F475500025F8B /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				75C764E6226F475500025F8B /* PBXTargetDependency */,
-			);
-			name = KeePassiumLibTests;
-			productName = KeePassiumLibTests;
-			productReference = 75C764DF226F475500025F8B /* KeePassiumLibTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 		75D0C7692174AF1F00C64C93 /* KeePassiumLib */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 75D0C77E2174AF2000C64C93 /* Build configuration list for PBXNativeTarget "KeePassiumLib" */;
 			buildPhases = (
+				7500756B231E6ED4007CC2F1 /* BartyCrouch */,
 				75D0C7652174AF1F00C64C93 /* Headers */,
 				75D0C7662174AF1F00C64C93 /* Sources */,
 				75D0C7672174AF1F00C64C93 /* Frameworks */,
@@ -625,9 +666,6 @@
 				LastUpgradeCheck = 1000;
 				ORGANIZATIONNAME = "Andrei Popleteev";
 				TargetAttributes = {
-					75C764DE226F475500025F8B = {
-						CreatedOnToolsVersion = 10.2.1;
-					};
 					75D0C7692174AF1F00C64C93 = {
 						CreatedOnToolsVersion = 10.0;
 					};
@@ -639,6 +677,16 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ru,
+				Base,
+				nl,
+				"zh-Hant",
+				"zh-Hans",
+				de,
+				cs,
+				sv,
+				es,
+				fr,
 			);
 			mainGroup = 75D0C7602174AF1F00C64C93;
 			productRefGroup = 75D0C76B2174AF1F00C64C93 /* Products */;
@@ -646,37 +694,45 @@
 			projectRoot = "";
 			targets = (
 				75D0C7692174AF1F00C64C93 /* KeePassiumLib */,
-				75C764DE226F475500025F8B /* KeePassiumLibTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		75C764DD226F475500025F8B /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		75D0C7682174AF1F00C64C93 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				75D09BDD2174F76500F7DEF2 /* LICENSE in Resources */,
+				755E7DA7232021460010E199 /* InfoPlist.strings in Resources */,
+				751E0CDF2309A3420088BB10 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXSourcesBuildPhase section */
-		75C764DB226F475500025F8B /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+/* Begin PBXShellScriptBuildPhase section */
+		7500756B231E6ED4007CC2F1 /* BartyCrouch */ = {
+			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = BartyCrouch;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which bartycrouch > /dev/null; then\n  #bartycrouch update -x\n  bartycrouch lint -x\nelse\n  echo \"warning: BartyCrouch not installed, download it from https://github.com/Flinesoft/BartyCrouch\"\nfi\n";
 		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
 		75D0C7662174AF1F00C64C93 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -686,21 +742,26 @@
 				75D09BE12174F76500F7DEF2 /* core.c in Sources */,
 				75D09BCE2174F76500F7DEF2 /* chacha20.c in Sources */,
 				75D09C1C2174F77000F7DEF2 /* AESKDF.swift in Sources */,
+				75134CFC23C0F02C0065CD10 /* DatabaseItem.swift in Sources */,
 				75D09BD02174F76500F7DEF2 /* aeskdf.cpp in Sources */,
 				75D09C262174F77000F7DEF2 /* Xml2.swift in Sources */,
 				75D09C2D2174F77000F7DEF2 /* VarDict.swift in Sources */,
+				75A2677B229045A60097C693 /* PremiumFeature.swift in Sources */,
 				75F4ACD6217745B300B22D8B /* DatabaseManagerObserver.swift in Sources */,
 				75F4ACF421774A6400B22D8B /* URL+extensions.swift in Sources */,
 				75D09C1F2174F77000F7DEF2 /* Attachment.swift in Sources */,
 				75D09C362174F77000F7DEF2 /* FixedWidthInteger+extension.swift in Sources */,
 				75D09C382174F77000F7DEF2 /* StreamCipher.swift in Sources */,
+				7538167E22B15FC7000FA4BD /* Settings+premium.swift in Sources */,
 				7505E8CF2236ED6E00E5202E /* Base32.swift in Sources */,
 				75F4ACF321774A6400B22D8B /* Clipboard.swift in Sources */,
 				75D09C292174F77000F7DEF2 /* Group2.swift in Sources */,
+				757CB44223993E48000867F0 /* DatabaseSettings.swift in Sources */,
 				75D09C342174F77000F7DEF2 /* Bool+extension.swift in Sources */,
 				75D09C392174F77000F7DEF2 /* TwofishDataCipher.swift in Sources */,
 				75D09C2B2174F77000F7DEF2 /* Meta2.swift in Sources */,
 				75D09C1E2174F77000F7DEF2 /* Argon2KDF.swift in Sources */,
+				750935C4235219B900A362C8 /* Observable.swift in Sources */,
 				75D09C3A2174F77000F7DEF2 /* DataCipher.swift in Sources */,
 				75D09BA42174F02F00F7DEF2 /* salsa20.c in Sources */,
 				75F4ACD5217745B300B22D8B /* DatabaseManager.swift in Sources */,
@@ -710,6 +771,7 @@
 				75D09C232174F77000F7DEF2 /* Database2.swift in Sources */,
 				75D09C2F2174F77000F7DEF2 /* Date+extension.swift in Sources */,
 				75D09C2E2174F77000F7DEF2 /* UUID+extension.swift in Sources */,
+				751E0D68230D12660088BB10 /* Bundle+extensions.swift in Sources */,
 				75D09C312174F77000F7DEF2 /* Eraser.swift in Sources */,
 				75D09BDE2174F76500F7DEF2 /* ref.c in Sources */,
 				75D09C202174F77000F7DEF2 /* Header2.swift in Sources */,
@@ -720,6 +782,7 @@
 				75D09C282174F77000F7DEF2 /* CustomIcon2.swift in Sources */,
 				75F4ACE42177469500B22D8B /* FileKeeperObserver.swift in Sources */,
 				75D09B8E2174F02F00F7DEF2 /* Salsa20.swift in Sources */,
+				75393ABA238D3AC400C63C54 /* ChallengeResponse.swift in Sources */,
 				75F4ACEC2177485D00B22D8B /* Weak.swift in Sources */,
 				75D09C1D2174F77000F7DEF2 /* KDFParams.swift in Sources */,
 				75D09BE42174F76500F7DEF2 /* encoding.c in Sources */,
@@ -731,6 +794,8 @@
 				75D09C2C2174F77000F7DEF2 /* IconID.swift in Sources */,
 				75D09BD42174F76500F7DEF2 /* twofish.cpp in Sources */,
 				75D09BD32174F76500F7DEF2 /* Twofish.swift in Sources */,
+				75205FA5239C01CF00C1DEAA /* DatabaseSettingsManager.swift in Sources */,
+				754D7C0E238C26A7005652E1 /* YubiKey.swift in Sources */,
 				7505E8D12236FA0F00E5202E /* StringExtension.swift in Sources */,
 				75D09C432174F77000F7DEF2 /* DateExtension-kp1.swift in Sources */,
 				75D09C322174F77000F7DEF2 /* String+extension.swift in Sources */,
@@ -741,11 +806,13 @@
 				75D09C3E2174F77000F7DEF2 /* StreamCipherFactory.swift in Sources */,
 				75D09C2A2174F77000F7DEF2 /* DeletedObject2.swift in Sources */,
 				75D09C462174F77000F7DEF2 /* KeyHelper1.swift in Sources */,
+				759896432341CED300DF39AA /* BusinessModel.swift in Sources */,
 				75F4ACD22177456200B22D8B /* PasswordGenerator.swift in Sources */,
 				75F4ACE12177469500B22D8B /* FileType.swift in Sources */,
 				75F4ACEF217749DC00B22D8B /* UserDefaults+appGroupShared.swift in Sources */,
 				75F4ACDF2177469500B22D8B /* TemporaryFileURL.swift in Sources */,
 				75D09C412174F77000F7DEF2 /* Database1.swift in Sources */,
+				75384B9922CCB76800157598 /* UsageMonitor.swift in Sources */,
 				75F594B8221BDC51001729FD /* SettingsMigrator.swift in Sources */,
 				75D09C422174F77000F7DEF2 /* Header1.swift in Sources */,
 				75D09BD22174F76500F7DEF2 /* ChaCha20.swift in Sources */,
@@ -758,18 +825,22 @@
 				75D09BA52174F02F00F7DEF2 /* CryptoError.swift in Sources */,
 				7505E8CB2236C93300E5202E /* TOTPGenerator.swift in Sources */,
 				75D09C402174F77000F7DEF2 /* Eraseable.swift in Sources */,
+				75D4080523952FD40042122A /* CompositeKey.swift in Sources */,
 				75D09C5C2174F81900F7DEF2 /* Error.swift in Sources */,
 				75D09C3B2174F77000F7DEF2 /* DataCipherFactory.swift in Sources */,
 				75D09C272174F77000F7DEF2 /* KeyHelper2.swift in Sources */,
 				75F4ACE32177469500B22D8B /* FileDocument.swift in Sources */,
+				75205FA3239BDB6700C1DEAA /* DatabaseSettings.swift in Sources */,
 				75D09C302174F77000F7DEF2 /* ByteArray.swift in Sources */,
 				75F4ACE22177469500B22D8B /* DatabaseDocument.swift in Sources */,
+				7558700722E5857C00E1DD89 /* TOTPGeneratorFactory.swift in Sources */,
 				75D09BDB2174F76500F7DEF2 /* blake2b.c in Sources */,
 				75F4ACEA2177485D00B22D8B /* Settings.swift in Sources */,
 				75D09C5D2174F81900F7DEF2 /* Element.swift in Sources */,
 				75EA2D1721B2FB4000826FC6 /* Diag.swift in Sources */,
 				75D09C5F2174F81900F7DEF2 /* Document.swift in Sources */,
 				75D09C372174F77000F7DEF2 /* KeyHelper.swift in Sources */,
+				75A26770228DAC440097C693 /* PremiumManager.swift in Sources */,
 				75D09BAF2174F3E600F7DEF2 /* KeePassiumLib.m in Sources */,
 				75D09C252174F77000F7DEF2 /* Entry2.swift in Sources */,
 			);
@@ -777,57 +848,43 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		75C764E6226F475500025F8B /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 75D0C7692174AF1F00C64C93 /* KeePassiumLib */;
-			targetProxy = 75C764E5226F475500025F8B /* PBXContainerItemProxy */;
+/* Begin PBXVariantGroup section */
+		751E0CDD2309A3420088BB10 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				751E0CDE2309A3420088BB10 /* en */,
+				751E0D63230B49190088BB10 /* ru */,
+				75AC53482326FCC6000AA4FB /* nl */,
+				75AC534A2326FCDB000AA4FB /* zh-Hant */,
+				75AC53A2232766EB000AA4FB /* zh-Hans */,
+				75E4CA89232D0B2200EB6805 /* de */,
+				75FDEF1D233ABE7800F17C26 /* cs */,
+				75FDEF49233ABED700F17C26 /* sv */,
+				75AC35BB23549D6C00B60614 /* es */,
+				7502613D243E970000C47F4F /* fr */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
 		};
-/* End PBXTargetDependency section */
+		755E7DA5232021460010E199 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				755E7DA6232021460010E199 /* ru */,
+				75AC53472326FCC6000AA4FB /* nl */,
+				75AC53492326FCDB000AA4FB /* zh-Hant */,
+				75AC53A1232766EB000AA4FB /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
-		75C764E8226F475500025F8B /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 84W4PHXS24;
-				INFOPLIST_FILE = KeePassiumLibTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.keepassium.ios.KeePassiumLibTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		75C764E9226F475500025F8B /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 84W4PHXS24;
-				INFOPLIST_FILE = KeePassiumLibTests/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.keepassium.ios.KeePassiumLibTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
 		75D0C77C2174AF2000C64C93 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -892,6 +949,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -1003,15 +1061,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		75C764E7226F475500025F8B /* Build configuration list for PBXNativeTarget "KeePassiumLibTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				75C764E8226F475500025F8B /* Debug */,
-				75C764E9226F475500025F8B /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		75D0C7642174AF1F00C64C93 /* Build configuration list for PBXProject "KeePassiumLib" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -167,7 +167,6 @@ public class Entry2: Entry {
         
         func loadAssociation(xml: AEXMLElement) throws {
             assert(xml.name == Xml2.association)
-            erase()
             
             var window: String?
             var sequence: String?
@@ -282,16 +281,16 @@ public class Entry2: Entry {
         super.erase()
     }
     
-    override public func clone() -> Entry {
+    override public func clone(makeNewUUID: Bool) -> Entry {
         let newEntry = Entry2(database: self.database)
-        self.apply(to: newEntry)
+        self.apply(to: newEntry, makeNewUUID: makeNewUUID)
         
         
         return newEntry
     }
 
-    func apply(to target: Entry2) {
-        super.apply(to: target)
+    func apply(to target: Entry2, makeNewUUID: Bool) {
+        super.apply(to: target, makeNewUUID: makeNewUUID)
         target.customIconUUID = self.customIconUUID
         target.foregroundColor = self.foregroundColor
         target.backgroundColor = self.backgroundColor
@@ -307,7 +306,8 @@ public class Entry2: Entry {
 
         target.history.removeAll()
         for histEntry in history {
-            target.history.append(histEntry.clone() as! Entry2)
+            let histEntryClone = histEntry.clone(makeNewUUID: makeNewUUID) as! Entry2
+            target.history.append(histEntryClone)
         }
     }
     
@@ -344,27 +344,20 @@ public class Entry2: Entry {
     
     
     override public func backupState() {
-        let entryClone = self.clone() as! Entry2
+        let entryClone = self.clone(makeNewUUID: false) as! Entry2
         entryClone.clearHistory()
         addToHistory(entry: entryClone)
         maintainHistorySize()
     }
 
-    override public func accessed() {
-        super.accessed()
+    override public func touch(_ mode: DatabaseItem.TouchMode, updateParents: Bool = true) {
         usageCount += 1
+        super.touch(mode, updateParents: updateParents)
     }
     
-    override public func matches(query: SearchQuery) -> Bool {
-        if super.matches(query: query) {
-            return true
-        }
-        for field in fields {
-            if field.matches(query: query) && !field.isProtected {
-                return true
-            }
-        }
-        return false
+    override public func move(to newGroup: Group) {
+        super.move(to: newGroup)
+        locationChangedTime = Date.now
     }
     
     func load(
@@ -409,6 +402,10 @@ public class Entry2: Entry {
                     setField(name: field.name, value: field.value, isProtected: field.isProtected)
                 }
             case Xml2.binary:
+                guard !tag.children.isEmpty else {
+                    Diag.warning("Skipping an empty Binary tag")
+                    continue
+                }
                 let att = try Attachment2.load(
                     xml: tag,
                     database: database as! Database2,
@@ -439,6 +436,7 @@ public class Entry2: Entry {
         Diag.verbose("Loading XML: entry times")
         let db = database as! Database2
         
+        var optionalExpiryTime: Date?
         for tag in xml.children {
             switch tag.name {
             case Xml2.lastModificationTime:
@@ -466,13 +464,18 @@ public class Entry2: Entry {
                 }
                 lastAccessTime = time
             case Xml2.expiryTime:
-                guard let time = db.xmlStringToDate(tag.value) else {
+                guard let tagValue = tag.value else {
+                    Diag.warning("Entry/Times/ExpiryTime is nil")
+                    optionalExpiryTime = nil 
+                    continue
+                }
+                guard let time = db.xmlStringToDate(tagValue) else {
                     Diag.error("Cannot parse Entry/Times/ExpiryTime as Date")
                     throw Xml2.ParsingError.malformedValue(
                         tag: "Entry/Times/ExpiryTime",
-                        value: tag.value)
+                        value: tagValue)
                 }
-                expiryTime = time
+                optionalExpiryTime = time
             case Xml2.expires:
                 self.canExpire = Bool(string: tag.value)
             case Xml2.usageCount:
@@ -488,6 +491,19 @@ public class Entry2: Entry {
             default:
                 Diag.error("Unexpected XML tag in Entry/Times: \(tag.name)")
                 throw Xml2.ParsingError.unexpectedTag(actual: tag.name, expected: "Entry/Times/*")
+            }
+        }
+        
+        if let expiryTime = optionalExpiryTime  {
+            self.expiryTime = expiryTime
+        } else {
+            if canExpire {
+                Diag.error("Parsed an entry that can expire, but Entry/Times/ExpiryTime is nil")
+                throw Xml2.ParsingError.malformedValue(
+                    tag: "Entry/Times/ExpiryTime",
+                    value: nil)
+            } else {
+                self.expiryTime = Date.distantFuture
             }
         }
     }

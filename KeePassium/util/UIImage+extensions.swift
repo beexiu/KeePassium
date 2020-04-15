@@ -30,6 +30,16 @@ enum ImageAsset: String {
     case copyToClipboardAccessory = "copy-to-clipboard-accessory"
     case biometryTouchIDListitem = "touch-id-listitem"
     case biometryFaceIDListitem = "face-id-listitem"
+    case premiumBenefitMultiDB = "premium-benefit-multidb"
+    case premiumBenefitDBTimeout = "premium-benefit-db-timeout"
+    case premiumBenefitPreview = "premium-benefit-preview"
+    case premiumBenefitHardwareKeys = "premium-benefit-yubikey"
+    case premiumBenefitSupport = "premium-benefit-support"
+    case premiumBenefitShiny = "premium-benefit-shiny"
+    case expandRowCellAccessory = "expand-row-cellaccessory"
+    case collapseRowCellAccessory = "collapse-row-cellaccessory"
+    case yubikeyOnAccessory = "yubikey-on-accessory"
+    case yubikeyOffAccessory = "yubikey-off-accessory"
 }
 
 extension UIImage {
@@ -42,9 +52,6 @@ extension UIImage {
     }
     
     static func kpIcon(forEntry entry: Entry) -> UIImage? {
-        if entry.isExpired {
-            return UIImage(named: "db-icons/kpbIconExpired")
-        }
         if let entry2 = entry as? Entry2,
             let db2 = entry2.database as? Database2,
             let customIcon2 = db2.customIcons[entry2.customIconUUID],
@@ -55,9 +62,6 @@ extension UIImage {
     }
     
     static func kpIcon(forGroup group: Group) -> UIImage? {
-        if group.isExpired {
-            return UIImage(named: "db-icons/kpbIconExpired")
-        }
         if let group2 = group as? Group2,
             let db2 = group2.database as? Database2,
             let customIcon2 = db2.customIcons[group2.customIconUUID],

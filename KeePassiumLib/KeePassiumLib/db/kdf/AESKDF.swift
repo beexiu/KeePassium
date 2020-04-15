@@ -40,8 +40,20 @@ class AESKDF: KeyDerivationFunction {
     
     func initProgress() -> ProgressEx {
         progress = ProgressEx()
-        progress.localizedDescription = NSLocalizedString("Master key processing", comment: "Status message: processing of the master key is in progress")
+        progress.localizedDescription = NSLocalizedString(
+            "[KDF/Progress] Processing the master key",
+            bundle: Bundle.framework,
+            value: "Processing the master key",
+            comment: "Status message: processing of the master key is in progress")
         return progress
+    }
+    
+    
+    func getChallenge(_ params: KDFParams) throws -> ByteArray {
+        guard let transformSeed = params.getValue(key: AESKDF.transformSeedParam)?.asByteArray() else {
+            throw CryptoError.invalidKDFParam(kdfName: name, paramName: AESKDF.transformSeedParam)
+        }
+        return transformSeed
     }
     
     func randomize(params: inout KDFParams) throws {

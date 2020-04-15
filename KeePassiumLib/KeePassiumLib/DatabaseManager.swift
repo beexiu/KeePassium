@@ -36,62 +36,98 @@ public class DatabaseManager {
     public var isDatabaseOpen: Bool { return database != nil }
     
     private var databaseDocument: DatabaseDocument?
+    private var databaseLoader: DatabaseLoader?
+    private var databaseSaver: DatabaseSaver?
+    
     private var serialDispatchQueue = DispatchQueue(
         label: "com.keepassium.DatabaseManager",
         qos: .userInitiated)
     
-    private init() {
+    public init() {
     }
 
     
     
-    public func closeDatabase(completion callback: (() -> Void)?=nil, clearStoredKey: Bool) {
+    public func closeDatabase(
+        clearStoredKey: Bool,
+        ignoreErrors: Bool,
+        completion callback: ((String?) -> Void)?)
+    {
         guard database != nil else { return }
-        Diag.debug("Will close database")
+        Diag.verbose("Will queue close database")
 
         if clearStoredKey, let urlRef = databaseRef {
-            try? Keychain.shared.removeDatabaseKey(databaseRef: urlRef)
+            DatabaseSettingsManager.shared.updateSettings(for: urlRef) { (dbSettings) in
+                dbSettings.clearMasterKey()
+                Diag.verbose("Master key cleared")
+            }
         }
 
         serialDispatchQueue.async {
             guard let dbDoc = self.databaseDocument else { return }
+            Diag.debug("Will close database")
             
-            dbDoc.close(successHandler: {
-                guard let dbRef = self.databaseRef else { assertionFailure(); return }
-                self.notifyDatabaseWillClose(database: dbRef)
-                self.databaseDocument = nil
-                self.databaseRef = nil
-                self.notifyDatabaseDidClose(database: dbRef)
-                Diag.info("Database closed")
-                callback?()
-            }, errorHandler: { errorMessage in
-                Diag.warning("Failed to save database document [message: \(String(describing: errorMessage))]")
-            })
+            let completionSemaphore = DispatchSemaphore(value: 0)
+            
+            DispatchQueue.main.async {
+                dbDoc.close(successHandler: { 
+                    self.handleDatabaseClosing()
+                    callback?(nil)
+                    completionSemaphore.signal()
+                }, errorHandler: { errorMessage in 
+                    Diag.error("Failed to save database document [message: \(String(describing: errorMessage))]")
+                    let adjustedErrorMessage: String?
+                    if ignoreErrors {
+                        Diag.warning("Ignoring errors and closing anyway")
+                        self.handleDatabaseClosing()
+                        adjustedErrorMessage = nil
+                    } else {
+                        adjustedErrorMessage = errorMessage
+                    }
+                    callback?(adjustedErrorMessage)
+                    completionSemaphore.signal()
+                })
+            }
+            completionSemaphore.wait()
         }
+    }
+    
+    private func handleDatabaseClosing() {
+        guard let dbRef = self.databaseRef else { assertionFailure(); return }
+        
+        self.notifyDatabaseWillClose(database: dbRef)
+        self.databaseDocument = nil
+        self.databaseRef = nil
+        self.notifyDatabaseDidClose(database: dbRef)
+        Diag.info("Database closed")
     }
 
     public func startLoadingDatabase(
         database dbRef: URLReference,
         password: String,
-        keyFile keyFileRef: URLReference?)
+        keyFile keyFileRef: URLReference?,
+        challengeHandler: ChallengeHandler?)
     {
+        Diag.verbose("Will queue load database")
+        let compositeKey = CompositeKey(
+            password: password,
+            keyFileRef: keyFileRef,
+            challengeHandler: challengeHandler
+        )
         serialDispatchQueue.async {
-            self._loadDatabase(dbRef: dbRef, compositeKey: nil, password: password, keyFileRef: keyFileRef)
+            self._loadDatabase(dbRef: dbRef, compositeKey: compositeKey)
         }
     }
     
-    public func startLoadingDatabase(database dbRef: URLReference, compositeKey: SecureByteArray) {
+    public func startLoadingDatabase(database dbRef: URLReference, compositeKey: CompositeKey) {
+        Diag.verbose("Will queue load database")
+        let compositeKeyClone = compositeKey.clone()
         serialDispatchQueue.async {
-            self._loadDatabase(dbRef: dbRef, compositeKey: compositeKey, password: "", keyFileRef: nil)
+            self._loadDatabase(dbRef: dbRef, compositeKey: compositeKeyClone)
         }
     }
     
-    private func _loadDatabase(
-        dbRef: URLReference,
-        compositeKey: SecureByteArray?,
-        password: String,
-        keyFileRef: URLReference?)
-    {
+    private func _loadDatabase(dbRef: URLReference, compositeKey: CompositeKey) {
         precondition(database == nil, "Can only load one database at a time")
 
         Diag.info("Will load database")
@@ -99,36 +135,32 @@ public class DatabaseManager {
         progress.totalUnitCount = ProgressSteps.all
         progress.completedUnitCount = 0
         
-        let dbLoader = DatabaseLoader(
+        precondition(databaseLoader == nil)
+        databaseLoader = DatabaseLoader(
             dbRef: dbRef,
             compositeKey: compositeKey,
-            password: password,
-            keyFileRef: keyFileRef,
             progress: progress,
-            completion: databaseLoaded)
-        dbLoader.load()
+            completion: databaseLoaderFinished)
+        databaseLoader!.load()
     }
     
-    private func databaseLoaded(_ dbDoc: DatabaseDocument, _ dbRef: URLReference) {
-        self.databaseDocument = dbDoc
+    private func databaseLoaderFinished(_ dbRef: URLReference, _ dbDoc: DatabaseDocument?) {
         self.databaseRef = dbRef
+        self.databaseDocument = dbDoc
+        self.databaseLoader = nil
     }
 
     public func rememberDatabaseKey(onlyIfExists: Bool = false) throws {
         guard let databaseRef = databaseRef, let database = database else { return }
-        
-        if onlyIfExists {
-            guard try hasKey(for: databaseRef) else { return }
+        let dsm = DatabaseSettingsManager.shared
+        let dbSettings = dsm.getOrMakeSettings(for: databaseRef)
+        if onlyIfExists && !dbSettings.hasMasterKey {
+            return
         }
-        try Keychain.shared.setDatabaseKey(
-            databaseRef: databaseRef,
-            key: database.compositeKey)
-        Diag.info("Database key saved in keychain.")
-    }
-    
-    public func hasKey(for databaseRef: URLReference) throws -> Bool {
-        let key = try Keychain.shared.getDatabaseKey(databaseRef: databaseRef)
-        return key != nil
+        
+        Diag.info("Saving database key in keychain.")
+        dbSettings.setMasterKey(database.compositeKey)
+        dsm.setSettings(dbSettings, for: databaseRef)
     }
     
     public func startSavingDatabase() {
@@ -143,7 +175,10 @@ public class DatabaseManager {
         }
     }
     
-    private func _saveDatabase(_ dbDoc: DatabaseDocument, dbRef: URLReference) {
+    private func _saveDatabase(
+        _ dbDoc: DatabaseDocument,
+        dbRef: URLReference)
+    {
         precondition(database != nil, "No database to save")
         Diag.info("Saving database")
         
@@ -152,18 +187,20 @@ public class DatabaseManager {
         progress.completedUnitCount = 0
         notifyDatabaseWillSave(database: dbRef)
         
-        let dbSaver = DatabaseSaver(
+        precondition(databaseSaver == nil)
+        databaseSaver = DatabaseSaver(
             databaseDocument: dbDoc,
             databaseRef: dbRef,
             progress: progress,
-            completion: databaseSaved)
-        dbSaver.save()
+            completion: databaseSaverFinished)
+        databaseSaver!.save()
     }
     
-    private func databaseSaved(_ dbDoc: DatabaseDocument) {
+    private func databaseSaverFinished(_ urlRef: URLReference, _ dbDoc: DatabaseDocument) {
+        databaseSaver = nil
     }
     
-    public func changeCompositeKey(to newKey: SecureByteArray) {
+    public func changeCompositeKey(to newKey: CompositeKey) {
         database?.changeCompositeKey(to: newKey)
         Diag.info("Database composite key changed")
     }
@@ -172,19 +209,28 @@ public class DatabaseManager {
         keyHelper: KeyHelper,
         password: String,
         keyFile keyFileRef: URLReference?,
-        success successHandler: @escaping((_ combinedKey: SecureByteArray) -> Void),
+        challengeHandler: ChallengeHandler?,
+        success successHandler: @escaping((_ compositeKey: CompositeKey) -> Void),
         error errorHandler: @escaping((_ errorMessage: String) -> Void))
     {
         let dataReadyHandler = { (keyFileData: ByteArray) -> Void in
             let passwordData = keyHelper.getPasswordData(password: password)
             if passwordData.isEmpty && keyFileData.isEmpty {
                 Diag.error("Password and key file are both empty")
-                errorHandler(NSLocalizedString("Password and key file are both empty.", comment: "Error message"))
+                errorHandler(NSLocalizedString(
+                    "[Database/Unlock/Error] Password and key file are both empty.",
+                    bundle: Bundle.framework,
+                    value: "Password and key file are both empty.",
+                    comment: "Error message"))
                 return
             }
-            let compositeKey = keyHelper.makeCompositeKey(
-                passwordData: passwordData,
-                keyFileData: keyFileData)
+            let staticComponents = keyHelper.combineComponents(
+                passwordData: passwordData, 
+                keyFileData: keyFileData    
+            )
+            let compositeKey = CompositeKey(
+                staticComponents: staticComponents,
+                challengeHandler: challengeHandler)
             Diag.debug("New composite key created successfully")
             successHandler(compositeKey)
         }
@@ -197,11 +243,21 @@ public class DatabaseManager {
                     dataReadyHandler(keyDoc.data)
                 }, errorHandler: { error in
                     Diag.error("Failed to open key file [error: \(error.localizedDescription)]")
-                    errorHandler(NSLocalizedString("Failed to open key file", comment: "Error message"))
+                    errorHandler(NSLocalizedString(
+                        "[Database/Unlock/Error] Failed to open key file",
+                        bundle: Bundle.framework,
+                        value: "Failed to open key file",
+                        comment: "Error message")
+                    )
                 })
             } catch {
                 Diag.error("Failed to open key file [error: \(error.localizedDescription)]")
-                errorHandler(NSLocalizedString("Failed to open key file", comment: "Error message"))
+                errorHandler(NSLocalizedString(
+                    "[Database/Unlock/Error] Failed to open key file",
+                    bundle: Bundle.framework,
+                    value: "Failed to open key file",
+                    comment: "Error message")
+                )
                 return
             }
             
@@ -214,6 +270,7 @@ public class DatabaseManager {
         databaseURL: URL,
         password: String,
         keyFile: URLReference?,
+        challengeHandler: ChallengeHandler?,
         template templateSetupHandler: @escaping (Group2) -> Void,
         success successHandler: @escaping () -> Void,
         error errorHandler: @escaping ((String?) -> Void))
@@ -230,6 +287,7 @@ public class DatabaseManager {
             keyHelper: db2.keyHelper,
             password: password,
             keyFile: keyFile,
+            challengeHandler: challengeHandler,
             success: { 
                 (newCompositeKey) in
                 DatabaseManager.shared.changeCompositeKey(to: newCompositeKey)
@@ -285,27 +343,6 @@ public class DatabaseManager {
     }
 
 
-    internal enum Notifications {
-        static let cancelled = Notification.Name("com.keepassium.databaseManager.cancelled")
-        static let progressDidChange = Notification.Name("com.keepassium.databaseManager.progressDidChange")
-        static let willLoadDatabase = Notification.Name("com.keepassium.databaseManager.willLoadDatabase")
-        static let didLoadDatabase = Notification.Name("com.keepassium.databaseManager.didLoadDatabase")
-        static let willSaveDatabase = Notification.Name("com.keepassium.databaseManager.willSaveDatabase")
-        static let didSaveDatabase = Notification.Name("com.keepassium.databaseManager.didSaveDatabase")
-        static let invalidMasterKey = Notification.Name("com.keepassium.databaseManager.invalidMasterKey")
-        static let loadingError = Notification.Name("com.keepassium.databaseManager.loadingError")
-        static let savingError = Notification.Name("com.keepassium.databaseManager.savingError")
-        static let willCreateDatabase = Notification.Name("com.keepassium.databaseManager.willCreateDatabase")
-        static let willCloseDatabase = Notification.Name("com.keepassium.databaseManager.willCloseDatabase")
-        static let didCloseDatabase = Notification.Name("com.keepassium.databaseManager.didCloseDatabase")
-        
-        static let userInfoURLRefKey = "urlRef"
-        static let userInfoProgressKey = "progress"
-        static let userInfoErrorMessageKey = "errorMessage"
-        static let userInfoErrorReasonKey = "errorReason"
-        static let userInfoWarningsKey = "warningMessages"
-    }
-    
     fileprivate func notifyDatabaseWillLoad(database urlRef: URLReference) {
         notificationQueue.async { 
             for (_, observer) in self.observers {
@@ -315,11 +352,6 @@ public class DatabaseManager {
                 }
             }
         }
-        
-        NotificationCenter.default.post(
-            name: Notifications.willLoadDatabase,
-            object: self,
-            userInfo: [Notifications.userInfoURLRefKey: urlRef])
     }
     
     fileprivate func notifyDatabaseDidLoad(
@@ -334,15 +366,6 @@ public class DatabaseManager {
                 }
             }
         }
-        
-        NotificationCenter.default.post(
-            name: Notifications.didLoadDatabase,
-            object: self,
-            userInfo: [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoWarningsKey: warnings
-            ]
-        )
     }
     
     fileprivate func notifyOperationCancelled(database urlRef: URLReference) {
@@ -354,11 +377,6 @@ public class DatabaseManager {
                 }
             }
         }
-        
-        NotificationCenter.default.post(
-            name: Notifications.cancelled,
-            object: self,
-            userInfo: [Notifications.userInfoURLRefKey: urlRef])
     }
 
     fileprivate func notifyProgressDidChange(database urlRef: URLReference, progress: ProgressEx) {
@@ -370,10 +388,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.progressDidChange,
-            object: self,
-            userInfo: [Notifications.userInfoProgressKey: progress])
     }
 
     
@@ -399,21 +413,6 @@ public class DatabaseManager {
                 }
             }
         }
-        let userInfo: [AnyHashable: Any]
-        if let reason = reason {
-            userInfo = [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoErrorMessageKey: message,
-                Notifications.userInfoErrorReasonKey: reason]
-        } else {
-            userInfo = [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoErrorMessageKey: message]
-        }
-        NotificationCenter.default.post(
-            name: Notifications.loadingError,
-            object: nil,
-            userInfo: userInfo)
     }
     
     fileprivate func notifyDatabaseInvalidMasterKey(database urlRef: URLReference, message: String) {
@@ -425,14 +424,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.invalidMasterKey,
-            object: self,
-            userInfo: [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoErrorMessageKey: message
-            ]
-        )
     }
     
     fileprivate func notifyDatabaseWillSave(database urlRef: URLReference) {
@@ -444,13 +435,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.willSaveDatabase,
-            object: self,
-            userInfo: [
-                Notifications.userInfoURLRefKey: urlRef
-            ]
-        )
     }
     
     fileprivate func notifyDatabaseDidSave(database urlRef: URLReference) {
@@ -462,13 +446,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.didSaveDatabase,
-            object: self,
-            userInfo: [
-                Notifications.userInfoURLRefKey: urlRef
-            ]
-        )
     }
     
     fileprivate func notifyDatabaseSaveError(
@@ -493,21 +470,6 @@ public class DatabaseManager {
                 }
             }
         }
-        let userInfo: [AnyHashable: Any]
-        if let reason = reason {
-            userInfo = [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoErrorMessageKey: message,
-                Notifications.userInfoErrorReasonKey: reason]
-        } else {
-            userInfo = [
-                Notifications.userInfoURLRefKey: urlRef,
-                Notifications.userInfoErrorMessageKey: message]
-        }
-        NotificationCenter.default.post(
-            name: Notifications.savingError,
-            object: self,
-            userInfo: userInfo)
     }
 
     fileprivate func notifyDatabaseWillCreate(database urlRef: URLReference) {
@@ -519,10 +481,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.willCreateDatabase,
-            object: self,
-            userInfo: [Notifications.userInfoURLRefKey: urlRef])
     }
 
     fileprivate func notifyDatabaseWillClose(database urlRef: URLReference) {
@@ -534,10 +492,6 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.willCloseDatabase,
-            object: self,
-            userInfo: [Notifications.userInfoURLRefKey: urlRef])
     }
     
     fileprivate func notifyDatabaseDidClose(database urlRef: URLReference) {
@@ -549,37 +503,30 @@ public class DatabaseManager {
                 }
             }
         }
-        NotificationCenter.default.post(
-            name: Notifications.didCloseDatabase,
-            object: self,
-            userInfo: [Notifications.userInfoURLRefKey: urlRef])
     }
 }
 
 
 fileprivate class DatabaseLoader {
+    typealias CompletionHandler = (URLReference, DatabaseDocument?) -> Void
+    
     private let dbRef: URLReference
-    private let compositeKey: SecureByteArray?
-    private let password: String
-    private let keyFileRef: URLReference?
+    private let compositeKey: CompositeKey
     private let progress: ProgressEx
     private var progressKVO: NSKeyValueObservation?
     private unowned var notifier: DatabaseManager
     private let warnings: DatabaseLoadingWarnings
-    private let completion: ((DatabaseDocument, URLReference) -> Void)
+    private let completion: CompletionHandler
     
     init(
         dbRef: URLReference,
-        compositeKey: SecureByteArray?,
-        password: String,
-        keyFileRef: URLReference?,
+        compositeKey: CompositeKey,
         progress: ProgressEx,
-        completion: @escaping((DatabaseDocument, URLReference) -> Void))
+        completion: @escaping(CompletionHandler))
     {
+        assert(compositeKey.state != .empty)
         self.dbRef = dbRef
         self.compositeKey = compositeKey
-        self.password = password
-        self.keyFileRef = keyFileRef
         self.progress = progress
         self.completion = completion
         self.warnings = DatabaseLoadingWarnings()
@@ -657,14 +604,23 @@ fileprivate class DatabaseLoader {
             notifier.notifyDatabaseLoadError(
                 database: dbRef,
                 isCancelled: progress.isCancelled,
-                message: NSLocalizedString("Cannot find database file", comment: "Error message"),
+                message: NSLocalizedString(
+                    "[Database/Load/Error] Cannot find database file",
+                    bundle: Bundle.framework,
+                    value: "Cannot find database file",
+                    comment: "Error message"),
                 reason: error.localizedDescription)
+            completion(dbRef, nil)
             endBackgroundTask()
             return
         }
         
         let dbDoc = DatabaseDocument(fileURL: dbURL)
-        progress.status = NSLocalizedString("Loading database file...", comment: "Status message: loading database file in progress")
+        progress.status = NSLocalizedString(
+            "[Database/Progress] Loading database file...",
+            bundle: Bundle.framework,
+            value: "Loading database file...",
+            comment: "Progress bar status")
         dbDoc.open(
             successHandler: {
                 self.onDatabaseDocumentOpened(dbDoc)
@@ -676,8 +632,13 @@ fileprivate class DatabaseLoader {
                 self.notifier.notifyDatabaseLoadError(
                     database: self.dbRef,
                     isCancelled: self.progress.isCancelled,
-                    message: NSLocalizedString("Cannot open database file", comment: "Error message"),
+                    message: NSLocalizedString(
+                        "[Database/Load/Error] Cannot open database file",
+                        bundle: Bundle.framework,
+                        value: "Cannot open database file",
+                        comment: "Error message"),
                     reason: errorMessage)
+                self.completion(self.dbRef, nil)
                 self.endBackgroundTask()
             }
         )
@@ -692,23 +653,34 @@ fileprivate class DatabaseLoader {
             notifier.notifyDatabaseLoadError(
                 database: dbRef,
                 isCancelled: progress.isCancelled,
-                message: NSLocalizedString("Unrecognized database format", comment: "Error message"),
+                message: NSLocalizedString(
+                    "[Database/Load/Error] Unrecognized database format",
+                    bundle: Bundle.framework,
+                    value: "Unrecognized database format",
+                    comment: "Error message"),
                 reason: nil)
+            completion(dbRef, nil)
             endBackgroundTask()
             return
         }
         
         dbDoc.database = db
-        if let compositeKey = compositeKey {
+        guard compositeKey.state == .rawComponents else {
+            
             progress.completedUnitCount += ProgressSteps.readKeyFile
             Diag.info("Using a ready composite key")
-            onCompositeKeyReady(dbDoc: dbDoc, compositeKey: compositeKey)
+            onCompositeKeyComponentsProcessed(dbDoc: dbDoc, compositeKey: compositeKey)
             return
         }
         
-        if let keyFileRef = keyFileRef {
+        if let keyFileRef = compositeKey.keyFileRef {
             Diag.debug("Loading key file")
-            progress.localizedDescription = NSLocalizedString("Loading key file...", comment: "Status message: loading key file in progress")
+            progress.localizedDescription = NSLocalizedString(
+                "[Database/Progress] Loading key file...",
+                bundle: Bundle.framework,
+                value: "Loading key file...",
+                comment: "Progress status")
+            
             let keyFileURL: URL
             do {
                 keyFileURL = try keyFileRef.resolve()
@@ -718,8 +690,13 @@ fileprivate class DatabaseLoader {
                 notifier.notifyDatabaseLoadError(
                     database: dbRef,
                     isCancelled: progress.isCancelled,
-                    message: NSLocalizedString("Cannot find key file", comment: "Error message"),
+                    message: NSLocalizedString(
+                        "[Database/Load/Error] Cannot find key file",
+                        bundle: Bundle.framework,
+                        value: "Cannot find key file",
+                        comment: "Error message"),
                     reason: error.localizedDescription)
+                completion(dbRef, nil)
                 endBackgroundTask()
                 return
             }
@@ -736,8 +713,13 @@ fileprivate class DatabaseLoader {
                     self.notifier.notifyDatabaseLoadError(
                         database: self.dbRef,
                         isCancelled: self.progress.isCancelled,
-                        message: NSLocalizedString("Cannot open key file", comment: "Error message"),
+                        message: NSLocalizedString(
+                            "[Database/Load/Error] Cannot open key file",
+                            bundle: Bundle.framework,
+                            value: "Cannot open key file",
+                            comment: "Error message"),
                         reason: error.localizedDescription)
+                    self.completion(self.dbRef, nil)
                     self.endBackgroundTask()
                 }
             )
@@ -751,40 +733,47 @@ fileprivate class DatabaseLoader {
         
         progress.completedUnitCount += ProgressSteps.readKeyFile
         let keyHelper = database.keyHelper
-        let passwordData = keyHelper.getPasswordData(password: password)
+        let passwordData = keyHelper.getPasswordData(password: compositeKey.password)
         if passwordData.isEmpty && keyFileData.isEmpty {
             Diag.error("Both password and key file are empty")
             stopObservingProgress()
             notifier.notifyDatabaseInvalidMasterKey(
                 database: dbRef,
                 message: NSLocalizedString(
-                    "Please provide at least a password or a key file",
-                    comment: "Error message"))
+                    "[Database/Load/Error] Please provide at least a password or a key file",
+                    bundle: Bundle.framework,
+                    value: "Please provide at least a password or a key file",
+                    comment: "Error shown when both master password and key file are empty"))
+            completion(dbRef, nil)
             endBackgroundTask()
             return
         }
-        let compositeKey = keyHelper.makeCompositeKey(
-            passwordData: passwordData,
-            keyFileData: keyFileData)
-        onCompositeKeyReady(dbDoc: dbDoc, compositeKey: compositeKey)
+        compositeKey.setProcessedComponents(passwordData: passwordData, keyFileData: keyFileData)
+        onCompositeKeyComponentsProcessed(dbDoc: dbDoc, compositeKey: compositeKey)
     }
     
-    func onCompositeKeyReady(dbDoc: DatabaseDocument, compositeKey: SecureByteArray) {
+    func onCompositeKeyComponentsProcessed(dbDoc: DatabaseDocument, compositeKey: CompositeKey) {
+        assert(compositeKey.state >= .processedComponents)
         guard let db = dbDoc.database else { fatalError() }
         do {
             progress.addChild(db.initProgress(), withPendingUnitCount: ProgressSteps.decryptDatabase)
             Diag.info("Loading database")
             try db.load(
+                dbFileName: dbDoc.fileURL.lastPathComponent,
                 dbFileData: dbDoc.encryptedData,
                 compositeKey: compositeKey,
-                warnings: warnings
-            )
+                warnings: warnings)
             Diag.info("Database loaded OK")
-            progress.localizedDescription = NSLocalizedString("Done", comment: "Status message: operation completed")
-            completion(dbDoc, dbRef)
+            progress.localizedDescription = NSLocalizedString(
+                "[Database/Progress] Done",
+                bundle: Bundle.framework,
+                value: "Done",
+                comment: "Progress status: finished loading database")
+            completion(dbRef, dbDoc)
             stopObservingProgress()
             notifier.notifyDatabaseDidLoad(database: dbRef, warnings: warnings)
             endBackgroundTask()
+            
         } catch let error as DatabaseError {
             dbDoc.database = nil
             dbDoc.close(completionHandler: nil)
@@ -802,18 +791,18 @@ fileprivate class DatabaseLoader {
                     isCancelled: progress.isCancelled,
                     message: error.localizedDescription,
                     reason: error.failureReason)
-                endBackgroundTask()
             case .invalidKey:
                 Diag.error("Invalid master key. [message: \(error.localizedDescription)]")
                 stopObservingProgress()
                 notifier.notifyDatabaseInvalidMasterKey(
                     database: dbRef,
                     message: error.localizedDescription)
-                endBackgroundTask()
             case .saveError:
                 Diag.error("saveError while loading?!")
                 fatalError("Database saving error while loading?!")
             }
+            completion(dbRef, nil)
+            endBackgroundTask()
         } catch let error as ProgressInterruption {
             dbDoc.database = nil
             dbDoc.close(completionHandler: nil)
@@ -835,9 +824,11 @@ fileprivate class DatabaseLoader {
                         message: error.localizedDescription,
                         reason: nil)
                 }
+                completion(dbRef, nil)
                 endBackgroundTask()
             }
         } catch {
+            assertionFailure("Unprocessed exception")
             dbDoc.database = nil
             dbDoc.close(completionHandler: nil)
             Diag.error("Unexpected error [message: \(error.localizedDescription)]")
@@ -847,6 +838,7 @@ fileprivate class DatabaseLoader {
                 isCancelled: progress.isCancelled,
                 message: error.localizedDescription,
                 reason: nil)
+            completion(dbRef, nil)
             endBackgroundTask()
         }
     }
@@ -854,18 +846,20 @@ fileprivate class DatabaseLoader {
 
 
 fileprivate class DatabaseSaver {
+    typealias CompletionHandler = (URLReference, DatabaseDocument) -> Void
+    
     private let dbDoc: DatabaseDocument
     private let dbRef: URLReference
     private let progress: ProgressEx
     private var progressKVO: NSKeyValueObservation?
     private unowned var notifier: DatabaseManager
-    private let completion: ((DatabaseDocument) -> Void)
+    private let completion: CompletionHandler
 
     init(
         databaseDocument dbDoc: DatabaseDocument,
         databaseRef dbRef: URLReference,
         progress: ProgressEx,
-        completion: @escaping((DatabaseDocument) -> Void))
+        completion: @escaping(CompletionHandler))
     {
         assert(dbDoc.documentState.contains(.normal))
         self.dbDoc = dbDoc
@@ -920,6 +914,7 @@ fileprivate class DatabaseSaver {
     
     func save() {
         guard let database = dbDoc.database else { fatalError("Database is nil") }
+        
         startBackgroundTask()
         startObservingProgress()
         do {
@@ -942,7 +937,7 @@ fileprivate class DatabaseSaver {
                     Diag.info("Database saved OK")
                     self.stopObservingProgress()
                     self.notifier.notifyDatabaseDidSave(database: self.dbRef)
-                    self.completion(self.dbDoc)
+                    self.completion(self.dbRef, self.dbDoc)
                     self.endBackgroundTask()
                 },
                 errorHandler: {
@@ -954,6 +949,7 @@ fileprivate class DatabaseSaver {
                         isCancelled: self.progress.isCancelled,
                         message: errorMessage ?? "",
                         reason: nil)
+                    self.completion(self.dbRef, self.dbDoc)
                     self.endBackgroundTask()
                 }
             )
@@ -970,6 +966,7 @@ fileprivate class DatabaseSaver {
                 isCancelled: progress.isCancelled,
                 message: error.localizedDescription,
                 reason: error.failureReason)
+            completion(dbRef, dbDoc)
             endBackgroundTask()
         } catch let error as ProgressInterruption {
             stopObservingProgress()
@@ -990,6 +987,7 @@ fileprivate class DatabaseSaver {
                         message: error.localizedDescription,
                         reason: nil)
                 }
+                completion(dbRef, dbDoc)
                 endBackgroundTask()
             }
         } catch { 
@@ -1000,6 +998,7 @@ fileprivate class DatabaseSaver {
                 isCancelled: progress.isCancelled,
                 message: error.localizedDescription,
                 reason: nil)
+            completion(dbRef, dbDoc)
             endBackgroundTask()
         }
     }

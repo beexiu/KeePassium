@@ -53,16 +53,32 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
         self.refreshControl = refreshControl
         
+        let longPressGestureRecognizer = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(didLongPressTableView))
+        tableView.addGestureRecognizer(longPressGestureRecognizer)
+        
         refresh()
         self.clearsSelectionOnViewWillAppear = true
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        tableView.addObserver(self, forKeyPath: "contentSize", options: .new, context: nil)
+    }
+    
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         fileKeeperNotifications.startObserving()
         if FileKeeper.shared.hasPendingFileOperations {
             processPendingFileOperations()
         }
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        tableView.removeObserver(self, forKeyPath: "contentSize")
+        super.viewWillDisappear(animated)
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -73,10 +89,6 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
     
     @objc func refresh() {
         urlRefs = FileKeeper.shared.getAllReferences(fileType: .keyFile, includeBackup: false)
-        let navBarHeight = navigationController?.navigationBar.frame.height ?? 0.0
-        let preferredHeight = 44.0 * CGFloat(tableView.numberOfRows(inSection: 0)) + navBarHeight 
-        preferredContentSize = CGSize(width: 300, height: preferredHeight)
-
         fileInfoReloader.reload(urlRefs) { [weak self] in
             guard let self = self else { return }
             self.sortFileList()
@@ -90,6 +102,19 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
         let fileSortOrder = Settings.current.filesSortOrder
         self.urlRefs.sort { return fileSortOrder.compare($0, $1) }
         tableView.reloadData()
+    }
+    
+    override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey : Any]?,
+        context: UnsafeMutableRawPointer?)
+    {
+        var preferredSize = tableView.contentSize
+        if #available(iOS 13, *) {
+            preferredSize.width = 400
+        }
+        self.preferredContentSize = preferredSize
     }
     
     
@@ -115,6 +140,39 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
             confirmDeletionAlert.addAction(deleteAction)
             present(confirmDeletionAlert, animated: true, completion: nil)
         }
+    }
+    
+    @objc func didLongPressTableView(_ gestureRecognizer: UILongPressGestureRecognizer) {
+        let point = gestureRecognizer.location(in: tableView)
+        guard gestureRecognizer.state == .began,
+            let indexPath = tableView.indexPathForRow(at: point),
+            tableView(tableView, canEditRowAt: indexPath) else { return }
+        showActions(for: indexPath)
+    }
+    
+    private func showActions(for indexPath: IndexPath) {
+        let fileIndex = indexPath.row - 1
+        let urlRef = urlRefs[fileIndex]
+        let isInternalFile = urlRef.location.isInternal
+        let deleteAction = UIAlertAction(
+            title: isInternalFile ? LString.actionDeleteFile : LString.actionRemoveFile,
+            style: .destructive,
+            handler: { [weak self] _ in
+                guard let self = self else { return }
+                self.didPressDeleteKeyFile(at: indexPath)
+            }
+        )
+        let cancelAction = UIAlertAction(title: LString.actionCancel, style: .cancel, handler: nil)
+        
+        let menu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        menu.addAction(deleteAction)
+        menu.addAction(cancelAction)
+        
+        let pa = PopoverAnchor(tableView: tableView, at: indexPath)
+        if let popover = menu.popoverPresentationController {
+            pa.apply(to: popover)
+        }
+        present(menu, animated: true)
     }
     
     
@@ -177,8 +235,8 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
         accessoryButtonTappedForRowWith indexPath: IndexPath)
     {
         let urlRef = urlRefs[indexPath.row - 1]
-        guard let cell = tableView.cellForRow(at: indexPath) else { assertionFailure(); return }
-        let databaseInfoVC = FileInfoVC.make(urlRef: urlRef, popoverSource: cell)
+        let popoverAnchor = PopoverAnchor(tableView: tableView, at: indexPath)
+        let databaseInfoVC = FileInfoVC.make(urlRef: urlRef, at: popoverAnchor)
         present(databaseInfoVC, animated: true, completion: nil)
     }
     
@@ -216,7 +274,7 @@ class ChooseKeyFileVC: UITableViewController, Refreshable {
                 urlRef,
                 fileType: .keyFile,
                 ignoreErrors: urlRef.info.hasError)
-            Settings.current.forgetKeyFile(urlRef)
+            DatabaseSettingsManager.shared.removeAllAssociations(of: urlRef)
             refresh()
         } catch {
             let errorAlert = UIAlertController.make(
@@ -276,7 +334,7 @@ extension ChooseKeyFileVC: UIDocumentPickerDelegate {
                 [weak self] (error) in
                 guard let _self = self else { return }
                 let alert = UIAlertController.make(
-                    title: LString.titleImportError,
+                    title: LString.titleFileImportError,
                     message: error.localizedDescription)
                 _self.present(alert, animated: true, completion: nil)
             }

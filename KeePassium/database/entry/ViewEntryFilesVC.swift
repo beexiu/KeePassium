@@ -20,7 +20,6 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
     private var editButton: UIBarButtonItem! 
     private var isHistoryMode = false
     private var canAddFiles: Bool { return !isHistoryMode }
-    private var databaseManagerNotifications: DatabaseManagerNotifications!
     private var progressViewHost: ProgressViewHost?
     private var exportController: UIDocumentInteractionController!
 
@@ -38,13 +37,14 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        entry?.touch(.accessed)
+        
         editButton = UIBarButtonItem(
-            barButtonSystemItem: .edit,
+            title: LString.actionEdit,
+            style: .plain,
             target: self,
             action: #selector(didPressEdit))
         navigationItem.rightBarButtonItem = isHistoryMode ? nil : editButton
-        
-        databaseManagerNotifications = DatabaseManagerNotifications(observer: self)
         
         exportController = UIDocumentInteractionController()
     }
@@ -54,8 +54,21 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
         refresh()
     }
     
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        tableView.isEditing = false
+        refresh()
+    }
+    
     func refresh() {
         tableView.reloadData()
+        if tableView.isEditing {
+            editButton.title = LString.actionDone
+            editButton.style = .done
+        } else {
+            editButton.title = LString.actionEdit
+            editButton.style = .plain
+        }
     }
     
 
@@ -94,6 +107,7 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
         if indexPath.row < entry.attachments.count {
             let att = entry.attachments[indexPath.row]
             let cell = tableView.dequeueReusableCell(withIdentifier: CellID.fileItem, for: indexPath)
+            cell.imageView?.image = att.getSystemIcon()
             cell.textLabel?.text = att.name
             cell.detailTextLabel?.text = ByteCountFormatter.string(
                 fromByteCount: Int64(att.size),
@@ -112,6 +126,7 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
         
         tableView.deselectRow(at: indexPath, animated: true)
         
+        entry?.touch(.accessed)
         let row = indexPath.row
         if row < attachments.count {
             if tableView.isEditing {
@@ -178,9 +193,20 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
         return [deleteAction]
     }
     
+    override func tableView(
+        _ tableView: UITableView,
+        commit editingStyle: UITableViewCell.EditingStyle,
+        forRowAt indexPath: IndexPath)
+    {
+        if editingStyle == .insert {
+            didPressAddAttachment()
+        }
+    }
+    
     
     @objc func didPressEdit() {
         tableView.setEditing(!tableView.isEditing, animated: true)
+        refresh()
     }
     
 
@@ -190,7 +216,7 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
             let fileName = URL(string: encodedAttName)?.lastPathComponent else
         {
             Diag.warning("Failed to create a URL from attachment name [att.name: \(att.name)]")
-            let alert = UIAlertController.make(title: LString.titleExportError, message: nil)
+            let alert = UIAlertController.make(title: LString.titleFileExportError, message: nil)
             present(alert, animated: true, completion: nil)
             return
         }
@@ -200,22 +226,34 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
             let uncompressedBytes = att.isCompressed ? try att.data.gunzipped() : att.data
             try uncompressedBytes.write(to: exportFileURL, options: [.completeFileProtection])
             exportController.url = exportFileURL
-            if let icon = exportController.icons.first {
-                sourceCell.imageView?.image = icon
-            }
             exportController.delegate = self
-            Diag.info("Will present attachment")
-            if !exportController.presentPreview(animated: true) {
-                Diag.verbose("Preview not available, showing menu")
-                exportController.presentOptionsMenu(
-                    from: sourceCell.frame,
-                    in: tableView,
-                    animated: true)
+            let isPreviewAllowed = PremiumManager.shared.isAvailable(feature: .canPreviewAttachments)
+            if isPreviewAllowed {
+                Diag.info("Will present attachment")
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    if !self.exportController.presentPreview(animated: true) {
+                        Diag.verbose("Preview not available, showing menu")
+                        self.exportController.presentOptionsMenu(
+                            from: sourceCell.frame,
+                            in: self.tableView,
+                            animated: true)
+                    }
+                }
+            } else {
+                Diag.debug("Will export attachment")
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.exportController.presentOptionsMenu(
+                        from: sourceCell.frame,
+                        in: self.tableView,
+                        animated: true)
+                }
             }
         } catch {
             Diag.error("Failed to write attachment [reason: \(error.localizedDescription)]")
             let alert = UIAlertController.make(
-                title: LString.titleExportError,
+                title: LString.titleFileExportError,
                 message: error.localizedDescription)
             present(alert, animated: true, completion: nil)
         }
@@ -231,8 +269,14 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
         }
         
         let replacementAlert = UIAlertController(
-            title: NSLocalizedString("Replace existing attachment?", comment: "Confirmation message to replace an existing entry attachment with a new one."),
-            message: NSLocalizedString("This database supports only one attachment per entry, and there is already one. ", comment: "Explanation for replacing the only attachment of KeePass1 entry"),
+            title: NSLocalizedString(
+                "[Entry/Files/Add] Replace existing attachment?",
+                value: "Replace existing attachment?",
+                comment: "Confirmation message to replace an existing entry attachment with a new one."),
+            message: NSLocalizedString(
+                "[Entry/Files/Add] This database supports only one attachment per entry, and there is already one.",
+                value: "This database supports only one attachment per entry, and there is already one.",
+                comment: "Explanation for replacing the only attachment of KeePass1 entry"),
             preferredStyle: .alert)
         let cancelAction = UIAlertAction(
             title: LString.actionCancel,
@@ -252,13 +296,36 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
     }
     
     private func didPressRenameAttachment(at indexPath: IndexPath) {
-        print("did press Rename Attachment")
+        guard let attachment = entry?.attachments[indexPath.row] else { return }
+        
+        let renameController = UIAlertController(
+            title: NSLocalizedString(
+                "[Entry/Files/Rename/title] Rename File",
+                value: "Rename File",
+                comment: "Title of a dialog for renaming an attached file"),
+            message: nil,
+            preferredStyle: .alert)
+        renameController.addTextField { (textField) in
+            textField.text = attachment.name
+        }
+        let cancelAction = UIAlertAction(title: LString.actionCancel, style: .cancel, handler: nil)
+        let renameAction = UIAlertAction(title: LString.actionRename, style: .default) {
+            [weak renameController, weak self] (action) in
+            guard let textField = renameController?.textFields?.first,
+                let newName = textField.text,
+                newName.isNotEmpty else { return }
+            attachment.name = newName
+            self?.refresh()
+            self?.applyChangesAndSaveDatabase()
+        }
+        renameController.addAction(cancelAction)
+        renameController.addAction(renameAction)
+        self.present(renameController, animated: true, completion: nil)
     }
     
     private func didPressDeleteAttachment(at indexPath: IndexPath) {
         guard let entry = entry else { return }
         entry.backupState()
-        entry.modified()
         entry.attachments.remove(at: indexPath.row)
         Diag.info("Attachment deleted OK")
         
@@ -273,7 +340,7 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
     
     private func addAttachment() {
         let picker = UIDocumentPickerViewController(
-            documentTypes: FileType.publicDataUTIs,
+            documentTypes: FileType.attachmentUTIs,
             in: .import)
         picker.modalPresentationStyle = .formSheet
         picker.delegate = self
@@ -283,8 +350,8 @@ class ViewEntryFilesVC: UITableViewController, Refreshable {
     
     private func applyChangesAndSaveDatabase() {
         guard let entry = entry else { return }
-        entry.modified()
-        databaseManagerNotifications.startObserving()
+        entry.touch(.modified, updateParents: false)
+        DatabaseManager.shared.addObserver(self)
         DatabaseManager.shared.startSavingDatabase()
     }
 }
@@ -302,7 +369,7 @@ extension ViewEntryFilesVC: DatabaseManagerObserver {
     }
     
     func databaseManager(didSaveDatabase urlRef: URLReference) {
-        databaseManagerNotifications.stopObserving()
+        DatabaseManager.shared.removeObserver(self)
         progressViewHost?.hideProgressView()
         if let entry = entry {
             EntryChangeNotifications.post(entryDidChange: entry)
@@ -310,7 +377,7 @@ extension ViewEntryFilesVC: DatabaseManagerObserver {
     }
     
     func databaseManager(database urlRef: URLReference, isCancelled: Bool) {
-        databaseManagerNotifications.stopObserving()
+        DatabaseManager.shared.removeObserver(self)
         progressViewHost?.hideProgressView()
     }
 
@@ -319,7 +386,7 @@ extension ViewEntryFilesVC: DatabaseManagerObserver {
         savingError message: String,
         reason: String?)
     {
-        databaseManagerNotifications.stopObserving()
+        DatabaseManager.shared.removeObserver(self)
         progressViewHost?.hideProgressView()
         
         let errorAlert = UIAlertController.make(
@@ -345,7 +412,10 @@ extension ViewEntryFilesVC: UIDocumentPickerDelegate {
         guard let url = urls.first else { return }
         
         progressViewHost?.showProgressView(
-            title: NSLocalizedString("Loading attachment file", comment: "Status message: loading file to be attached to an entry"),
+            title: NSLocalizedString(
+                "[Entry/Files/Add] Loading attachment file",
+                value: "Loading attachment file",
+                comment: "Status message: loading file to be attached to an entry"),
             allowCancelling: false)
         
         let doc = FileDocument(fileURL: url)
@@ -368,8 +438,7 @@ extension ViewEntryFilesVC: UIDocumentPickerDelegate {
     private func addAttachment(name: String, data: ByteArray) {
         guard let entry = entry, let database = entry.database else { return }
         entry.backupState()
-        entry.modified()
-
+        
         let newAttachment = database.makeAttachment(name: name, data: data)
         if !entry.isSupportsMultipleAttachments {
             entry.attachments.removeAll()

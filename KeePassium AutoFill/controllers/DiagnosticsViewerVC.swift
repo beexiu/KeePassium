@@ -37,7 +37,7 @@ class DiagnosticsViewerCell: UITableViewCell {
 }
 
 protocol DiagnosticsViewerDelegate: class {
-    func diagnosticsViewer(_ sender: DiagnosticsViewerVC, didCopyContents text: String)
+    func didPressCopy(in diagnosticsViewer: DiagnosticsViewerVC, text: String)
 }
 
 class DiagnosticsViewerVC: UITableViewController {
@@ -52,13 +52,21 @@ class DiagnosticsViewerVC: UITableViewController {
         tableView.rowHeight = UITableView.automaticDimension
         items = Diag.itemsSnapshot()
         super.viewDidLoad()
+
+        if items.count > 0 {
+            let lastRowIndexPath = IndexPath(row: items.count - 1, section: 0)
+            DispatchQueue.main.async { 
+                self.tableView.scrollToRow(at: lastRowIndexPath, at: .none, animated: true)
+            }
+        }
     }
+    
     
     
     @IBAction func didPressCopy(_ sender: Any) {
         Watchdog.shared.restart()
         let logText = Diag.toString()
-        delegate?.diagnosticsViewer(self, didCopyContents: logText)
+        delegate?.didPressCopy(in: self, text: logText)
     }
     
     

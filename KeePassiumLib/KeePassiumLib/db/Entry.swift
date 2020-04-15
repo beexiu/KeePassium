@@ -46,16 +46,24 @@ public class EntryField: Eraseable {
         value.erase()
         isProtected = false
     }
-    public func matches(query: SearchQuery) -> Bool {
-        return name.localizedCaseInsensitiveContains(query.text) || value.localizedCaseInsensitiveContains(query.text)
+    
+    public func contains(word: Substring) -> Bool {
+        guard name != EntryField.password else { return false } 
+        
+        if name.localizedCaseInsensitiveContains(word) {
+            return true
+        }
+        if !isProtected && value.localizedCaseInsensitiveContains(word) {
+            return true
+        }
+        return false
     }
 }
 
-public class Entry: Eraseable {
+public class Entry: DatabaseItem, Eraseable {
     public static let defaultIconID = IconID.key
     
     public weak var database: Database?
-    public weak var parent: Group?
     public var uuid: UUID
     public var iconID: IconID
 
@@ -101,7 +109,6 @@ public class Entry: Eraseable {
     
     init(database: Database?) {
         self.database = database
-        parent = nil
         attachments = []
         fields = []
 
@@ -114,6 +121,8 @@ public class Entry: Eraseable {
         lastModificationTime = now
         lastAccessTime = now
         expiryTime = now
+        
+        super.init()
         
         canExpire = false
         populateStandardFields()
@@ -183,12 +192,16 @@ public class Entry: Eraseable {
         }
     }
 
-    public func clone() -> Entry {
+    public func clone(makeNewUUID: Bool) -> Entry {
         fatalError("Pure virtual method")
     }
     
-    public func apply(to target: Entry) {
-        target.uuid = uuid
+    public func apply(to target: Entry, makeNewUUID: Bool) {
+        if makeNewUUID {
+            target.uuid = UUID()
+        } else {
+            target.uuid = uuid
+        }
         target.iconID = iconID
         target.isDeleted = isDeleted
         target.lastModificationTime = lastModificationTime
@@ -211,16 +224,24 @@ public class Entry: Eraseable {
         fatalError("Pure virtual method")
     }
     
-    public func accessed() {
+    override public func touch(_ mode: DatabaseItem.TouchMode, updateParents: Bool = true) {
         lastAccessTime = Date.now
-    }
-    public func modified() {
-        accessed()
-        lastModificationTime = Date.now
+        if mode == .modified {
+            lastModificationTime = Date.now
+        }
+        if updateParents {
+            parent?.touch(mode, updateParents: true)
+        }
     }
     
     public func deleteWithoutBackup() {
         parent?.remove(entry: self)
+    }
+    
+    public func move(to newGroup: Group) {
+        guard newGroup !== parent else { return }
+        parent?.remove(entry: self)
+        newGroup.add(entry: self)
     }
     
     public func getGroupPath() -> String {
@@ -236,17 +257,26 @@ public class Entry: Eraseable {
     
     public func matches(query: SearchQuery) -> Bool {
         for word in query.textWords {
-            if title.contains(word) || userName.contains(word) || url.contains(word) || notes.contains(word) {
-                continue
-            }
             var wordFound = false
-            for att in attachments {
-                if att.name.contains(word) {
+            for field in fields {
+                if field.contains(word: word) {
                     wordFound = true
                     break
                 }
             }
-            if !wordFound { return false }
+            if wordFound {
+                continue
+            }
+
+            for att in attachments {
+                if att.name.localizedCaseInsensitiveContains(word) {
+                    wordFound = true
+                    break
+                }
+            }
+            if !wordFound {
+                return false
+            }
         }
         return true
     }

@@ -13,6 +13,9 @@ protocol DatabaseCreatorDelegate: class {
     func didPressCancel(in databaseCreatorVC: DatabaseCreatorVC)
     func didPressContinue(in databaseCreatorVC: DatabaseCreatorVC)
     func didPressPickKeyFile(in databaseCreatorVC: DatabaseCreatorVC, popoverSource: UIView)
+    func didPressPickHardwareKey(
+        in databaseCreatorVC: DatabaseCreatorVC,
+        at popoverAnchor: PopoverAnchor)
 }
 
 class DatabaseCreatorVC: UIViewController {
@@ -24,14 +27,20 @@ class DatabaseCreatorVC: UIViewController {
             showKeyFile(keyFile)
         }
     }
+    public var yubiKey: YubiKey? {
+        didSet {
+            keyFileField?.isYubiKeyActive = (yubiKey != nil)
+        }
+    }
 
     @IBOutlet weak var fileNameField: ValidatingTextField!
     @IBOutlet weak var passwordField: ProtectedTextField!
-    @IBOutlet weak var keyFileField: WatchdogAwareTextField!
+    @IBOutlet weak var keyFileField: KeyFileTextField!
     @IBOutlet weak var continueButton: UIButton!
     @IBOutlet var errorMessagePanel: UIView!
     @IBOutlet weak var errorLabel: UILabel!
     @IBOutlet weak var keyboardLayoutConstraint: KeyboardLayoutConstraint!
+    @IBOutlet weak var scrollView: UIScrollView!
     
     weak var delegate: DatabaseCreatorDelegate?
 
@@ -59,6 +68,16 @@ class DatabaseCreatorVC: UIViewController {
         passwordField.validityDelegate = self
         passwordField.delegate = self
         keyFileField.delegate = self
+        
+        keyFileField.yubikeyHandler = {
+            [weak self] (field) in
+            guard let self = self else { return }
+            let popoverAnchor = PopoverAnchor(
+                sourceView: self.keyFileField,
+                sourceRect: self.keyFileField.bounds)
+            self.delegate?.didPressPickHardwareKey(in: self, at: popoverAnchor)
+        }
+        keyFileField.isYubiKeyActive = (yubiKey != nil)
         
         passwordField.becomeFirstResponder()
     }
@@ -109,13 +128,24 @@ class DatabaseCreatorVC: UIViewController {
     
     func setError(message: String?, animated: Bool) {
         errorLabel.text = message
-        let visible = message?.isNotEmpty ?? false
+        let isToShow = message?.isNotEmpty ?? false
+        let isToHide = !isToShow
+        
+        if isToShow {
+            self.scrollView.setContentOffset(CGPoint(x: 0, y: 0), animated: animated)
+        }
+
+        guard errorMessagePanel.isHidden != isToHide else {
+            return
+        }
         if animated {
-            UIView.animate(withDuration: 0.3) { 
-                self.errorMessagePanel.isHidden = !visible
+            UIView.animate(withDuration: 0.3) {
+                self.errorMessagePanel.isHidden = isToHide
+                self.errorMessagePanel.superview?.layoutIfNeeded()
             }
         } else {
-            self.errorMessagePanel.isHidden = !visible
+            errorMessagePanel.isHidden = isToHide
+            errorMessagePanel.superview?.layoutIfNeeded()
         }
     }
     
@@ -133,7 +163,10 @@ class DatabaseCreatorVC: UIViewController {
         let hasPassword = passwordField.text?.isNotEmpty ?? false
         guard hasPassword || (keyFile != nil) else {
             setError(
-                message: NSLocalizedString("Please enter a password or choose a key file.", comment: "Hint shown when both password and key file are empty."),
+                message: NSLocalizedString(
+                    "[Database/Create] Please enter a password or choose a key file.",
+                    value: "Please enter a password or choose a key file.",
+                    comment: "Hint shown when both password and key file are empty."),
                 animated: true)
             return
         }

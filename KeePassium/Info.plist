@@ -28,6 +28,8 @@
 				<string>com.markmcguill.strongbox.kdb</string>
 				<string>com.markmcguill.strongbox.kdbx</string>
 				<string>be.kyuran.kypass.kdb</string>
+				<string>com.maxep.mikee.kdb</string>
+				<string>com.maxep.mikee.kdbx</string>
 			</array>
 		</dict>
 		<dict>
@@ -45,6 +47,10 @@
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIcons</key>
+	<dict/>
+	<key>CFBundleIcons~ipad</key>
+	<dict/>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -54,17 +60,30 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>keepassium</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
-	<string>24</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NFCReaderUsageDescription</key>
+	<string>KeePassium needs access to NFC to communicate with your YubiKey.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KeePassium needs the camera to scan QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use FaceID to unlock KeePassium</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>The app needs permission to export flie to your Photo Library.</string>
+	<string>KeePassium needs permission to export files to your Photo Library.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -212,6 +231,47 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.markmcguill.strongbox.kdbx</string>
 		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.maxep.mikee.kdb</string>
+			</array>
+			<key>UTTypeIconFiles</key>
+			<array/>
+			<key>UTTypeIdentifier</key>
+			<string>com.maxep.mikee.kdb</string>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.maxep.mikee.kdbx</string>
+			</array>
+			<key>UTTypeIconFiles</key>
+			<array/>
+			<key>UTTypeIdentifier</key>
+			<string>com.maxep.mikee.kdbx</string>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.keepassxc</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/x-keepass</string>
+					<string>application/x-keepass2</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
+	<array>
+		<string>A000000527471117</string>
+		<string>A0000006472F0001</string>
+		<string>A0000005272101</string>
+		<string>A000000308</string>
+		<string>A000000527200101</string>
+		<string>A0000005272001</string>
 	</array>
 </dict>
 </plist>

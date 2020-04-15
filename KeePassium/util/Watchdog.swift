@@ -57,9 +57,9 @@ class Watchdog {
     
     public weak var delegate: WatchdogDelegate?
     
-    private var isBeingUnlockedFromAnotherWindow = false
     private var appLockTimer: Timer?
     private var databaseLockTimer: Timer?
+    private var isIgnoringMinimizationOnce = false
     
     init() {
         NotificationCenter.default.addObserver(
@@ -80,11 +80,12 @@ class Watchdog {
     }
     
     internal func didBecomeActive() {
-        print("App did become active (fromAnotherWindow: \(isBeingUnlockedFromAnotherWindow))")
+        print("App did become active")
         restartAppTimer()
         restartDatabaseTimer()
-        if isBeingUnlockedFromAnotherWindow {
-            isBeingUnlockedFromAnotherWindow = false
+        if isIgnoringMinimizationOnce {
+            Diag.debug("Self-backgrounding ignored.")
+            isIgnoringMinimizationOnce = false
         } else {
             maybeLockSomething()
         }
@@ -92,20 +93,25 @@ class Watchdog {
     }
     
     @objc private func appWillResignActive(_ notification: Notification) {
+        willResignActive()
+    }
+    
+    internal func willResignActive() {
         print("App will resign active")
         guard let delegate = delegate else { return }
         delegate.showAppCover(self)
         if delegate.isAppLocked { return }
 
-        let databaseTimeout = Settings.current.databaseLockTimeout
-        if databaseTimeout == .immediately {
+        let databaseTimeout = Settings.current.premiumDatabaseLockTimeout
+        if databaseTimeout == .immediately && !isIgnoringMinimizationOnce {
             Diag.debug("Going to background: Database Lock engaged")
             engageDatabaseLock()
         }
         
         let appTimeout = Settings.current.appLockTimeout
-        if appTimeout == .immediately {
+        if appTimeout.triggerMode == .appMinimized && !isIgnoringMinimizationOnce {
             Diag.debug("Going to background: App Lock engaged")
+            Watchdog.shared.restart() 
         }
         
         appLockTimer?.invalidate()
@@ -130,6 +136,11 @@ class Watchdog {
         if isShouldEngageDatabaseLock() {
             engageDatabaseLock()
         }
+    }
+    
+    open func ignoreMinimizationOnce() {
+        assert(!isIgnoringMinimizationOnce)
+        isIgnoringMinimizationOnce = true
     }
     
     open func restart() {
@@ -159,7 +170,7 @@ class Watchdog {
     }
     
     private func isShouldEngageDatabaseLock() -> Bool {
-        let timeout = Settings.current.databaseLockTimeout
+        let timeout = Settings.current.premiumDatabaseLockTimeout
         switch timeout {
         case .never:
             return false
@@ -181,10 +192,10 @@ class Watchdog {
         }
         
         let timeout = Settings.current.appLockTimeout
-        switch timeout {
-        case .never, .immediately:
+        switch timeout.triggerMode {
+        case .appMinimized:
             return
-        default:
+        case .userIdle:
             appLockTimer = Timer.scheduledTimer(
                 timeInterval: Double(timeout.seconds),
                 target: self,
@@ -199,7 +210,7 @@ class Watchdog {
             databaseLockTimer.invalidate()
         }
         
-        let timeout = Settings.current.databaseLockTimeout
+        let timeout = Settings.current.premiumDatabaseLockTimeout
         Diag.verbose("Database Lock timeout: \(timeout.seconds)")
         switch timeout {
         case .never, .immediately:
@@ -220,7 +231,6 @@ class Watchdog {
         Diag.info("Engaging App Lock")
         appLockTimer?.invalidate()
         appLockTimer = nil
-        isBeingUnlockedFromAnotherWindow = false
         delegate.showAppLock(self)
         NotificationCenter.default.post(name: Watchdog.Notifications.appLockDidEngage, object: self)
     }
@@ -229,26 +239,24 @@ class Watchdog {
         Diag.info("Engaging Database Lock")
         self.databaseLockTimer?.invalidate()
         self.databaseLockTimer = nil
-        try? Keychain.shared.removeAllDatabaseKeys() 
+        DatabaseSettingsManager.shared.eraseAllMasterKeys()
         DatabaseManager.shared.closeDatabase(
-            completion: {
-                DispatchQueue.main.async {
-                    self.delegate?.watchdogDidCloseDatabase(self)
-                    NotificationCenter.default.post(
-                        name: Watchdog.Notifications.databaseLockDidEngage,
-                        object: self)
-                }
-            },
-            clearStoredKey: true)
+            clearStoredKey: true,
+            ignoreErrors: true,
+            completion: { 
+                (errorMessage) in 
+                self.delegate?.watchdogDidCloseDatabase(self)
+                NotificationCenter.default.post(
+                    name: Watchdog.Notifications.databaseLockDidEngage,
+                    object: self)
+            })
     }
     
-    open func unlockApp(fromAnotherWindow: Bool) {
+    open func unlockApp() {
         guard let delegate = delegate else { return }
         guard delegate.isAppLocked else { return }
-        isBeingUnlockedFromAnotherWindow = fromAnotherWindow
         delegate.hideAppCover(self)
         delegate.hideAppLock(self)
         restart()
     }
-    
 }

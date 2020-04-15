@@ -38,15 +38,27 @@ class EditableFieldCellFactory {
             for: indexPath)
             as! EditableFieldCell & UITableViewCell
         cell.field = field
+        
+        if field.internalName == EntryField.userName,
+            let userNameCell = cell as? EditEntrySingleLineCell
+        {
+            userNameCell.actionButton.setTitle(
+                NSLocalizedString(
+                    "[EditEntry/UserName/choose]",
+                    value: "Choose",
+                    comment: "Action: choose a username from a list"),
+                for: .normal)
+            userNameCell.actionButton.isHidden = false
+        }
+        
         return cell
     }
 }
 
 internal protocol EditableFieldCellDelegate: class {
-    func didPressChangeIcon(in cell: EditableFieldCell)
     func didChangeField(field: EditableField, in cell: EditableFieldCell)
     func didPressReturn(in cell: EditableFieldCell)
-    func didPressRandomize(field: EditableField, in cell: EditableFieldCell)
+    func didPressButton(field: EditableField, in cell: EditableFieldCell)
 }
 
 internal protocol EditableFieldCell: class {
@@ -81,6 +93,7 @@ class EditEntryTitleCell:
     
     override func awakeFromNib() {
         super.awakeFromNib()
+
         titleTextField.validityDelegate = self
         titleTextField.delegate = self
         
@@ -95,7 +108,8 @@ class EditEntryTitleCell:
     }
     
     @IBAction func didPressChangeIcon(_ sender: Any) {
-        delegate?.didPressChangeIcon(in: self)
+        guard let field = field else { return }
+        delegate?.didPressButton(field: field, in: self)
     }
     
     override func becomeFirstResponder() -> Bool {
@@ -135,19 +149,26 @@ class EditEntrySingleLineCell:
     UITextFieldDelegate
 {
     public static let storyboardID = "SingleLineCell"
-    @IBOutlet private weak var textField: ValidatingTextField!
-    @IBOutlet private weak var titleLabel: UILabel!
+    @IBOutlet weak var textField: ValidatingTextField!
+    @IBOutlet weak var titleLabel: UILabel!
+    @IBOutlet weak var actionButton: UIButton!
     
-    var delegate: EditableFieldCellDelegate?
+    weak var delegate: EditableFieldCellDelegate?
     weak var field: EditableField? {
         didSet {
             titleLabel.text = field?.visibleName
             textField.text = field?.value
             textField.isSecureTextEntry = field?.isProtected ?? false
+            textField.accessibilityLabel = field?.visibleName
         }
     }
     override func awakeFromNib() {
         super.awakeFromNib()
+        titleLabel.font = UIFont.systemFont(forTextStyle: .subheadline, weight: .thin)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        textField.font = UIFont.monospaceFont(forTextStyle: .body)
+        textField.adjustsFontForContentSizeCategory = true
+        
         textField.validityDelegate = self
         textField.delegate = self
     }
@@ -175,6 +196,11 @@ class EditEntrySingleLineCell:
     func validatingTextFieldShouldValidate(_ sender: ValidatingTextField) -> Bool {
         return field?.isValid ?? false
     }
+    
+    @IBAction func didPressActionButton(_ sender: Any) {
+        guard let field = field else { return }
+        delegate?.didPressButton(field: field, in: self)
+    }
 }
 
 class EditEntrySingleLineProtectedCell:
@@ -188,18 +214,25 @@ class EditEntrySingleLineProtectedCell:
     @IBOutlet private weak var titleLabel: UILabel!
     @IBOutlet weak var randomizeButton: UIButton!
     
-    var delegate: EditableFieldCellDelegate?
+    weak var delegate: EditableFieldCellDelegate?
     weak var field: EditableField? {
         didSet {
             titleLabel.text = field?.visibleName
             textField.text = field?.value
             textField.isSecureTextEntry = field?.isProtected ?? false
+            textField.accessibilityLabel = field?.visibleName
             randomizeButton.isHidden = (field?.internalName != EntryField.password)
         }
     }
     
     override func awakeFromNib() {
         super.awakeFromNib()
+        
+        titleLabel.font = UIFont.systemFont(forTextStyle: .subheadline, weight: .thin)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        textField.font = UIFont.monospaceFont(forTextStyle: .body)
+        textField.adjustsFontForContentSizeCategory = true
+        
         textField.validityDelegate = self
         textField.delegate = self
     }
@@ -230,7 +263,7 @@ class EditEntrySingleLineProtectedCell:
     
     @IBAction func didPressRandomizeButton(_ sender: Any) {
         guard let field = field else { return }
-        delegate?.didPressRandomize(field: field, in: self)
+        delegate?.didPressButton(field: field, in: self)
     }
 }
 
@@ -239,17 +272,24 @@ class EditEntryMultiLineCell: UITableViewCell, EditableFieldCell, ValidatingText
     @IBOutlet private weak var textView: ValidatingTextView!
     @IBOutlet weak var titleLabel: UILabel!
     
-    var delegate: EditableFieldCellDelegate?
+    weak var delegate: EditableFieldCellDelegate?
     weak var field: EditableField? {
         didSet {
             titleLabel.text = field?.visibleName
             textView.text = field?.value
             textView.isSecureTextEntry = field?.isProtected ?? false
+            textView.accessibilityLabel = field?.visibleName
         }
     }
     
     override func awakeFromNib() {
         super.awakeFromNib()
+        
+        titleLabel.font = UIFont.systemFont(forTextStyle: .subheadline, weight: .thin)
+        titleLabel.adjustsFontForContentSizeCategory = true
+        textView.font = UIFont.monospaceFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        
         textView.validityDelegate = self
         DispatchQueue.main.async {
             self.textView.setupBorder()
@@ -287,7 +327,7 @@ class EditEntryCustomFieldCell:
     @IBOutlet private weak var valueTextView: ValidatingTextView!
     @IBOutlet private weak var protectionSwitch: UISwitch!
 
-    var delegate: EditableFieldCellDelegate?
+    weak var delegate: EditableFieldCellDelegate?
     weak var field: EditableField? {
         didSet {
             nameTextField.text = field?.visibleName
@@ -298,6 +338,10 @@ class EditEntryCustomFieldCell:
     
     override func awakeFromNib() {
         super.awakeFromNib()
+        
+        valueTextView.font = UIFont.monospaceFont(forTextStyle: .body)
+        valueTextView.adjustsFontForContentSizeCategory = true
+        
         protectionSwitch.addTarget(self, action: #selector(protectionDidChange), for: .valueChanged)
         nameTextField.validityDelegate = self
         valueTextView.validityDelegate = self

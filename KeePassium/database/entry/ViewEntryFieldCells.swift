@@ -24,7 +24,7 @@ class ViewableFieldCellFactory {
         
         if field is TOTPViewableField {
             cell.decorator = TOTPFieldCellDecorator(cell: cell)
-        } else if field.isProtected {
+        } else if field.isProtected || (field.internalName == EntryField.password) {
             cell.decorator = ProtectedFieldCellDecorator(cell: cell)
         } else {
             cell.decorator = URLFieldCellDecorator(cell: cell)
@@ -99,6 +99,14 @@ class ViewableFieldCell: UITableViewCell {
     }
     
     func setupCell() {
+        let nameFont = UIFont.systemFont(ofSize: 15, weight: .thin)
+        let nameFontMetrics = UIFontMetrics(forTextStyle: .subheadline)
+        nameLabel.font = nameFontMetrics.scaledFont(for: nameFont)
+        
+        let valueFont = UIFont(name: "Menlo", size: 17) ?? UIFont.systemFont(ofSize: 17)
+        let valueFontMetrics = UIFontMetrics(forTextStyle: .body)
+        valueText.font = valueFontMetrics.scaledFont(for: valueFont)
+        
         nameLabel.text = field?.visibleName
         valueText.text = decorator?.getUserVisibleValue()
         decorator?.setupCell(self)
@@ -209,7 +217,16 @@ class ProtectedFieldCellDecorator: ViewableFieldCellDecorator {
             completion: {
                 [weak self] _ in
                 guard let _self = self else { return }
-                cell.valueText.text = _self.getUserVisibleValue()
+                let value = _self.getUserVisibleValue()
+                if cell.field?.isValueHidden ?? true {
+                    cell.valueText.attributedText = nil
+                    cell.valueText.text = value
+                    cell.valueText.textColor = .primaryText
+                } else {
+                    cell.valueText.attributedText = PasswordStringHelper.decorate(
+                        value ?? "",
+                        font: cell.valueText.font)
+                }
                 cell.delegate?.cellHeightDidChange(cell)
                 UIView.animate(
                     withDuration: 0.2,

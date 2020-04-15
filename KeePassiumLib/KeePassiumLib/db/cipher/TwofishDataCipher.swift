@@ -19,7 +19,10 @@ final class TwofishDataCipher: DataCipher {
     
     private var progress = ProgressEx()
     
-    init() {
+    private let isPaddingLikelyMessedUp: Bool
+    
+    init(isPaddingLikelyMessedUp: Bool) {
+        self.isPaddingLikelyMessedUp = isPaddingLikelyMessedUp
     }
 
     func initProgress() -> ProgressEx {
@@ -31,9 +34,15 @@ final class TwofishDataCipher: DataCipher {
         assert(key.count == self.keySize)
         assert(iv.count == self.initialVectorSize)
         
-        progress.localizedDescription = NSLocalizedString("Encrypting", comment: "Status message")
+        progress.localizedDescription = NSLocalizedString(
+            "[Cipher/Progress] Encrypting",
+            bundle: Bundle.framework,
+            value: "Encrypting",
+            comment: "Progress status")
+        
         let twofish = Twofish(key: key, iv: iv)
         let dataClone = data.clone() 
+        CryptoManager.addPadding(data: dataClone, blockSize: Twofish.blockSize)
         try twofish.encrypt(data: dataClone, progress: progress)
         return dataClone
     }
@@ -41,11 +50,21 @@ final class TwofishDataCipher: DataCipher {
     func decrypt(cipherText encData: ByteArray, key: ByteArray, iv: ByteArray) throws -> ByteArray {
         assert(key.count == self.keySize)
         assert(iv.count == self.initialVectorSize)
-        progress.localizedDescription = NSLocalizedString("Decrypting", comment: "Status message")
+        progress.localizedDescription = NSLocalizedString(
+            "[Cipher/Progress] Decrypting",
+            bundle: Bundle.framework,
+            value: "Decrypting",
+            comment: "Progress status")
         
         let twofish = Twofish(key: key, iv: iv) 
         let dataClone = encData.clone() 
         try twofish.decrypt(data: dataClone, progress: progress)
+        
+        if isPaddingLikelyMessedUp {
+            try? CryptoManager.removePadding(data: dataClone) 
+        } else {
+            try CryptoManager.removePadding(data: dataClone) 
+        }
         return dataClone
     }
 }

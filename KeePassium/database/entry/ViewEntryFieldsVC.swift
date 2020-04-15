@@ -35,10 +35,16 @@ class ViewEntryFieldsVC: UITableViewController, Refreshable {
         tableView.estimatedRowHeight = 44
         
         editButton.image = UIImage(asset: .editItemToolbar)
+        editButton.title = NSLocalizedString(
+            "[Entry/View] Edit Entry",
+            value: "Edit Entry",
+            comment: "Action to start editing an entry")
         editButton.target = self
         editButton.action = #selector(onEditAction)
-        
+        editButton.accessibilityIdentifier = "edit_entry_button" 
+
         entryChangeNotifications = EntryChangeNotifications(observer: self)
+        entry?.touch(.accessed)
         refresh()
     }
 
@@ -113,6 +119,7 @@ class ViewEntryFieldsVC: UITableViewController, Refreshable {
         } else {
             Clipboard.general.insert(text: text, timeout: timeout)
         }
+        entry?.touch(.accessed)
         animateCopyToClipboard(indexPath: indexPath)
     }
     

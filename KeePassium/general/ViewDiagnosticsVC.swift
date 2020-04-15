@@ -60,6 +60,12 @@ class ViewDiagnosticsVC: UITableViewController, Refreshable {
     func refresh() {
         items = Diag.itemsSnapshot()
         tableView.reloadData()
+        if items.count > 0 {
+            let lastRowIndexPath = IndexPath(row: items.count - 1, section: 0)
+            DispatchQueue.main.async { 
+                self.tableView.scrollToRow(at: lastRowIndexPath, at: .none, animated: true)
+            }
+        }
     }
     
     @IBAction func didPressCancel(_ sender: Any) {
@@ -67,7 +73,7 @@ class ViewDiagnosticsVC: UITableViewController, Refreshable {
     }
     
     @IBAction func didPressCompose(_ sender: Any) {
-        SupportEmailComposer.show(includeDiagnostics: true) {
+        SupportEmailComposer.show(subject: .problem) {
             [weak self] (success) in
             self?.dismiss(animated: true, completion: nil)
         }

@@ -76,10 +76,12 @@ class DatabaseCreatorCoordinator: NSObject {
             return
         }
         
+        let _challengeHandler = ChallengeResponseManager.makeHandler(for: databaseCreatorVC.yubiKey)
         DatabaseManager.shared.createDatabase(
             databaseURL: tmpFileURL,
             password: databaseCreatorVC.password,
             keyFile: databaseCreatorVC.keyFile,
+            challengeHandler: _challengeHandler,
             template: { [weak self] (rootGroup2) in
                 rootGroup2.name = fileName // override default "/" with a meaningful name
                 self?.addTemplateItems(to: rootGroup2)
@@ -96,35 +98,69 @@ class DatabaseCreatorCoordinator: NSObject {
     private func addTemplateItems(to rootGroup: Group2) {
         let groupGeneral = rootGroup.createGroup()
         groupGeneral.iconID = .folder
-        groupGeneral.name = "General".localized(comment: "Predefined group in a new database")
+        groupGeneral.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] General",
+            value: "General",
+            comment: "Predefined group in a new database")
         
         let groupInternet = rootGroup.createGroup()
         groupInternet.iconID = .globe
-        groupInternet.name = "Internet".localized(comment: "Predefined group in a new database")
+        groupInternet.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] Internet",
+            value: "Internet",
+            comment: "Predefined group in a new database")
+
 
         let groupEmail = rootGroup.createGroup()
         groupEmail.iconID = .envelopeOpen
-        groupEmail.name = "Email".localized(comment: "Predefined group in a new database")
+        groupEmail.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] Email",
+            value: "Email",
+            comment: "Predefined group in a new database")
+
 
         let groupHomebanking = rootGroup.createGroup()
         groupHomebanking.iconID = .currency
-        groupHomebanking.name = "Finance".localized(comment: "Predefined group in a new database")
+        groupHomebanking.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] Finance",
+            value: "Finance",
+            comment: "Predefined group in a new database")
+
         
         let groupNetwork = rootGroup.createGroup()
         groupNetwork.iconID = .server
-        groupNetwork.name = "Network".localized(comment: "Predefined group in a new database")
+        groupNetwork.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] Network",
+            value: "Network",
+            comment: "Predefined group in a new database")
+
 
         let groupLinux = rootGroup.createGroup()
         groupLinux.iconID = .apple
-        groupLinux.name = "OS".localized(comment: "Predefined `Operating system` group in a new database")
+        groupLinux.name = NSLocalizedString(
+            "[Database/Create/TemplateGroup/title] OS",
+            value: "OS",
+            comment: "Predefined `Operating system` group in a new database")
         
         let sampleEntry = rootGroup.createEntry()
         sampleEntry.iconID = .key
-        sampleEntry.title = "Sample Entry".localized(comment: "Title for a sample entry")
-        sampleEntry.userName = "john.smith".localized(comment: "User name for a sample entry. Set to a typical person name for your language.")
-        sampleEntry.password = "pa$$word".localized(comment: "Password for a sample entry. Translation is optional.")
+        sampleEntry.title = NSLocalizedString(
+            "[Database/Create/TemplateEntry/title] Sample Entry",
+            value: "Sample Entry",
+            comment: "Title for a sample entry")
+        sampleEntry.userName = NSLocalizedString(
+            "[Database/Create/TemplateEntry/userName] john.smith",
+            value: "john.smith",
+            comment: "User name for a sample entry. Set it to a typical person name for your language ( https://en.wikipedia.org/wiki/List_of_placeholder_names_by_language).")
+        sampleEntry.password = NSLocalizedString(
+            "[Database/Create/TemplateEntry/password] pa$$word",
+            value: "pa$$word",
+            comment: "Password for a sample entry. Translation is optional.")
         sampleEntry.url = "https://keepassium.com" 
-        sampleEntry.notes = "You can also store some notes, if you like.".localized(comment: "Note for a sample entry")
+        sampleEntry.notes = NSLocalizedString(
+            "[Database/Create/TemplateEntry/notes] You can also store some notes, if you like.",
+            value: "You can also store some notes, if you like.",
+            comment: "Note for a sample entry")
     }
     
     private func startSavingDatabase() {
@@ -184,6 +220,13 @@ extension DatabaseCreatorCoordinator: DatabaseCreatorDelegate {
         let keyFileChooser = ChooseKeyFileVC.make(popoverSourceView: popoverSource, delegate: self)
         navigationController.present(keyFileChooser, animated: true, completion: nil)
     }
+    
+    func didPressPickHardwareKey(
+        in databaseCreatorVC: DatabaseCreatorVC,
+        at popoverAnchor: PopoverAnchor)
+    {
+        showHardwareKeyPicker(at: popoverAnchor)
+    }
 }
 
 extension DatabaseCreatorCoordinator: KeyFileChooserDelegate {
@@ -206,14 +249,23 @@ extension DatabaseCreatorCoordinator: DatabaseManagerObserver {
     
     func databaseManager(didSaveDatabase urlRef: URLReference) {
         DatabaseManager.shared.removeObserver(self)
-        databaseCreatorVC.hideProgressView()
         DatabaseManager.shared.closeDatabase(
-            completion: { [weak self] in
-                DispatchQueue.main.async { [weak self] in
-                    self?.pickTargetLocation(for: urlRef)
+            clearStoredKey: true,
+            ignoreErrors: false,
+            completion: { [weak self] (errorMessage) in
+                if let errorMessage = errorMessage {
+                    self?.databaseCreatorVC.hideProgressView()
+                    let errorAlert = UIAlertController.make(
+                        title: LString.titleError,
+                        message: errorMessage,
+                        cancelButtonTitle: LString.actionDismiss)
+                    self?.navigationController.present(errorAlert, animated: true, completion: nil)
+                } else {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.pickTargetLocation(for: urlRef)
+                    }
                 }
-            },
-            clearStoredKey: true
+            }
         )
     }
     
@@ -237,6 +289,8 @@ extension DatabaseCreatorCoordinator: DatabaseManagerObserver {
 
 extension DatabaseCreatorCoordinator: UIDocumentPickerDelegate {
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        databaseCreatorVC.hideProgressView()
+        
         if let initialTopController = self.initialTopController {
             self.navigationController.popToViewController(initialTopController, animated: false)
         }
@@ -248,6 +302,40 @@ extension DatabaseCreatorCoordinator: UIDocumentPickerDelegate {
         didPickDocumentsAt urls: [URL])
     {
         guard let url = urls.first else { return }
-        addCreatedDatabase(at: url)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { 
+            self.databaseCreatorVC.hideProgressView()
+            self.addCreatedDatabase(at: url)
+        }
+    }
+}
+
+extension DatabaseCreatorCoordinator: HardwareKeyPickerDelegate {
+    func showHardwareKeyPicker(at popoverAnchor: PopoverAnchor) {
+        let hardwareKeyPicker = HardwareKeyPicker.create(delegate: self)
+        hardwareKeyPicker.modalPresentationStyle = .popover
+        if let popover = hardwareKeyPicker.popoverPresentationController {
+            popoverAnchor.apply(to: popover)
+            popover.delegate = hardwareKeyPicker.dismissablePopoverDelegate
+        }
+        hardwareKeyPicker.key = databaseCreatorVC.yubiKey
+        databaseCreatorVC.present(hardwareKeyPicker, animated: true, completion: nil)
+    }
+
+    func didDismiss(_ picker: HardwareKeyPicker) {
+    }
+    
+    func didSelectKey(yubiKey: YubiKey?, in picker: HardwareKeyPicker) {
+        setYubiKey(yubiKey)
+        databaseCreatorVC.becomeFirstResponder()
+    }
+    
+    func setYubiKey(_ yubiKey: YubiKey?) {
+        databaseCreatorVC.yubiKey = yubiKey
+        if let _yubiKey = yubiKey {
+            Diag.info("Hardware key selected [key: \(_yubiKey)]")
+        } else {
+            Diag.info("No hardware key selected")
+        }
     }
 }

@@ -18,7 +18,6 @@ class EditGroupVC: UIViewController, Refreshable {
     @IBOutlet weak var nameTextField: ValidatingTextField!
     
     private weak var delegate: EditGroupDelegate?
-    private var databaseManagerNotifications: DatabaseManagerNotifications!
 
     private weak var group: Group! {
         didSet { rememberOriginalState() }
@@ -40,7 +39,6 @@ class EditGroupVC: UIViewController, Refreshable {
     {
         let editGroupVC = EditGroupVC.instantiateFromStoryboard()
         editGroupVC.delegate = delegate
-        editGroupVC.databaseManagerNotifications = DatabaseManagerNotifications(observer: editGroupVC)
         editGroupVC.mode = mode
         switch mode {
         case .create:
@@ -53,6 +51,7 @@ class EditGroupVC: UIViewController, Refreshable {
         
         let navVC = UINavigationController(rootViewController: editGroupVC)
         navVC.modalPresentationStyle = .formSheet
+        navVC.presentationController?.delegate = editGroupVC
         if let popover = navVC.popoverPresentationController, let popoverSource = popoverSource {
             popover.sourceView = popoverSource
             popover.sourceRect = popoverSource.bounds
@@ -62,7 +61,7 @@ class EditGroupVC: UIViewController, Refreshable {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        databaseManagerNotifications.startObserving()
+        DatabaseManager.shared.addObserver(self)
         nameTextField.delegate = self
         nameTextField.validityDelegate = self
         switch mode {
@@ -71,12 +70,12 @@ class EditGroupVC: UIViewController, Refreshable {
         case .edit:
             title = LString.titleEditGroup
         }
-        group?.accessed()
+        group?.touch(.accessed)
         refresh()
     }
     
     deinit {
-        databaseManagerNotifications.stopObserving()
+        DatabaseManager.shared.removeObserver(self)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -107,12 +106,12 @@ class EditGroupVC: UIViewController, Refreshable {
     
     func rememberOriginalState() {
         guard let group = group else { fatalError() }
-        originalGroup = group.clone()
+        originalGroup = group.clone(makeNewUUID: false)
     }
     
     func restoreOriginalState() {
         if let group = group, let originalGroup = originalGroup {
-            originalGroup.apply(to: group)
+            originalGroup.apply(to: group, makeNewUUID: false)
         }
     }
     
@@ -151,7 +150,7 @@ class EditGroupVC: UIViewController, Refreshable {
             return
         }
         group.name = nameTextField.text ?? ""
-        group.modified()
+        group.touch(.modified, updateParents: false)
         DatabaseManager.shared.startSavingDatabase()
     }
     
@@ -162,6 +161,9 @@ class EditGroupVC: UIViewController, Refreshable {
             view,
             title: LString.databaseStatusSaving,
             animated: true)
+        if #available(iOS 13, *) {
+            isModalInPresentation = true 
+        }
         navigationController?.setNavigationBarHidden(true, animated: true)
     }
     
@@ -247,5 +249,12 @@ extension EditGroupVC: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         didPressDone(self)
         return true
+    }
+}
+
+
+extension EditGroupVC: UIAdaptivePresentationControllerDelegate {
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        didPressCancel(presentationController)
     }
 }

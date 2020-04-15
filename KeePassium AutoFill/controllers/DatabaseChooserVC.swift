@@ -10,7 +10,7 @@ import KeePassiumLib
 
 protocol DatabaseChooserDelegate: class {
     func databaseChooserShouldCancel(_ sender: DatabaseChooserVC)
-    func databaseChooserShouldAddDatabase(_ sender: DatabaseChooserVC)
+    func databaseChooserShouldAddDatabase(_ sender: DatabaseChooserVC, popoverAnchor: PopoverAnchor)
     func databaseChooser(_ sender: DatabaseChooserVC, didSelectDatabase urlRef: URLReference)
     func databaseChooser(_ sender: DatabaseChooserVC, shouldDeleteDatabase urlRef: URLReference)
     func databaseChooser(_ sender: DatabaseChooserVC, shouldRemoveDatabase urlRef: URLReference)
@@ -25,7 +25,7 @@ class DatabaseChooserVC: UITableViewController, Refreshable {
     
     weak var delegate: DatabaseChooserDelegate?
     
-    private var databaseRefs: [URLReference] = []
+    private(set) var databaseRefs: [URLReference] = []
 
     private let fileInfoReloader = FileInfoReloader()
 
@@ -37,6 +37,11 @@ class DatabaseChooserVC: UITableViewController, Refreshable {
         refreshControl.addTarget(self, action: #selector(refresh), for: .valueChanged)
         self.refreshControl = refreshControl
 
+        let longPressGestureRecognizer = UILongPressGestureRecognizer(
+            target: self,
+            action: #selector(didLongPressTableView))
+        tableView.addGestureRecognizer(longPressGestureRecognizer)
+        
         refresh()
     }
 
@@ -71,9 +76,19 @@ class DatabaseChooserVC: UITableViewController, Refreshable {
         delegate?.databaseChooserShouldCancel(self)
     }
     
-    @IBAction func didPressAddDatabase(_ sender: Any) {
+    @IBAction func didPressAddDatabase(_ sender: UIBarButtonItem) {
         Watchdog.shared.restart()
-        delegate?.databaseChooserShouldAddDatabase(self)
+        let popoverAnchor = PopoverAnchor(barButtonItem: sender)
+        delegate?.databaseChooserShouldAddDatabase(self, popoverAnchor: popoverAnchor)
+    }
+    
+    @objc func didLongPressTableView(_ gestureRecognizer: UILongPressGestureRecognizer) {
+        Watchdog.shared.restart()
+        let point = gestureRecognizer.location(in: tableView)
+        guard gestureRecognizer.state == .began,
+            let indexPath = tableView.indexPathForRow(at: point),
+            tableView(tableView, canEditRowAt: indexPath) else { return }
+        showActions(for: indexPath)
     }
     
 
@@ -148,5 +163,33 @@ class DatabaseChooserVC: UITableViewController, Refreshable {
         deleteAction.backgroundColor = UIColor.destructiveTint
         
         return [deleteAction]
+    }
+    
+    private func showActions(for indexPath: IndexPath) {
+        let urlRef = databaseRefs[indexPath.row]
+        let isInternalFile = urlRef.location.isInternal
+        let deleteAction = UIAlertAction(
+            title: isInternalFile ? LString.actionDeleteFile : LString.actionRemoveFile,
+            style: .destructive,
+            handler: { [weak self] _ in
+                guard let self = self else { return }
+                if isInternalFile {
+                    self.delegate?.databaseChooser(self, shouldDeleteDatabase: urlRef)
+                } else {
+                    self.delegate?.databaseChooser(self, shouldRemoveDatabase: urlRef)
+                }
+            }
+        )
+        let cancelAction = UIAlertAction(title: LString.actionCancel, style: .cancel, handler: nil)
+        
+        let menu = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        menu.addAction(deleteAction)
+        menu.addAction(cancelAction)
+        
+        let pa = PopoverAnchor(tableView: tableView, at: indexPath)
+        if let popover = menu.popoverPresentationController {
+            pa.apply(to: popover)
+        }
+        present(menu, animated: true)
     }
 }

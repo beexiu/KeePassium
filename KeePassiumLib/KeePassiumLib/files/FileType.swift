@@ -9,15 +9,18 @@
 import Foundation
 
 public enum FileType {
-    public static let publicDataUTIs = ["public.data", "public.content"]
+    public static let attachmentUTIs = ["public.data", "public.content"]
     
     public static let databaseUTIs = [
+        "public.data", "public.content", 
         "com.keepassium.kdb", "com.keepassium.kdbx",
+        "com.maxep.mikee.kdb", "com.maxep.mikee.kdbx", 
         "com.jflan.MiniKeePass.kdb", "com.jflan.MiniKeePass.kdbx",
         "com.kptouch.kdb", "com.kptouch.kdbx",
         "com.markmcguill.strongbox.kdb",
         "com.markmcguill.strongbox.kdbx",
-        "be.kyuran.kypass.kdb"]
+        "be.kyuran.kypass.kdb",
+        "org.keepassxc"]
     
     public static let keyFileUTIs =
         ["com.keepassium.keyfile", "public.data", "public.content"]
@@ -34,7 +37,7 @@ public enum FileType {
     case keyFile
 
     init(for url: URL) {
-        if FileType.DatabaseExtensions.all.contains(url.pathExtension) {
+        if FileType.DatabaseExtensions.all.contains(url.pathExtension.localizedLowercase) {
             self = .database
         } else {
             self = .keyFile
@@ -42,6 +45,6 @@ public enum FileType {
     }
 
     public static func isDatabaseFile(url: URL) -> Bool {
-        return DatabaseExtensions.all.contains(url.pathExtension)
+        return DatabaseExtensions.all.contains(url.pathExtension.localizedLowercase)
     }
 }

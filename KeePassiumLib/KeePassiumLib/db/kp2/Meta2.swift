@@ -89,9 +89,9 @@ final class Meta2: Eraseable {
     private(set) var defaultUserNameChangedTime: Date
     private(set) var maintenanceHistoryDays: UInt32
     private(set) var colorString: String
-    internal var masterKeyChangedTime: Date
-    private(set) var masterKeyChangeRec: Int64
-    private(set) var masterKeyChangeForce: Int64
+    internal var masterKeyChangedTime: Date 
+    private(set) var masterKeyChangeRec: Int64 
+    private(set) var masterKeyChangeForce: Int64 
     private(set) var memoryProtection: MemoryProtection
     private(set) var isRecycleBinEnabled: Bool
     private(set) var recycleBinGroupUUID: UUID
@@ -284,6 +284,16 @@ final class Meta2: Eraseable {
     func loadBinaries(xml: AEXMLElement, streamCipher: StreamCipher) throws {
         assert(xml.name == Xml2.binaries)
         Diag.verbose("Loading XML: meta binaries")
+        guard database.header.formatVersion == .v3 else {
+            if let tag = xml.children.first {
+                Diag.error("Unexpected XML content in V4 Meta/Binaries: \(tag.name)")
+                throw Xml2.ParsingError.unexpectedTag(actual: tag.name, expected: nil)
+            } else {
+                Diag.warning("Found empty Meta/Binaries in a V4 database, ignoring.")
+            }
+            return
+        }
+        
         database.binaries.removeAll()
         for tag in xml.children {
             switch tag.name {
@@ -310,7 +320,11 @@ final class Meta2: Eraseable {
         
         let backupGroup = Group2(database: database)
         backupGroup.uuid = UUID()
-        backupGroup.name = NSLocalizedString("Recycle Bin", comment: "Name of a group which contains deleted entries")
+        backupGroup.name = NSLocalizedString(
+            "[Database2/backupGroupName] Recycle Bin",
+            bundle: Bundle.framework,
+            value: "Recycle Bin",
+            comment: "Name of a group which contains deleted entries")
         backupGroup.iconID = IconID.trashBin
         backupGroup.isDeleted = true
         backupGroup.isAutoTypeEnabled = false
@@ -320,6 +334,11 @@ final class Meta2: Eraseable {
         self.recycleBinChangedTime = Date.now
         
         return backupGroup
+    }
+    
+    func resetRecycleBinGroupUUID() {
+        recycleBinGroupUUID = UUID.ZERO
+        self.recycleBinChangedTime = Date.now
     }
     
     func toXml(streamCipher: StreamCipher) throws -> AEXMLElement {

@@ -10,16 +10,23 @@ import UIKit
 
 public struct FileInfo {
     public var fileName: String
-    public var hasError: Bool { return errorMessage != nil}
-    public var errorMessage: String?
-    
+    public var hasError: Bool { return error != nil}
+    public var errorMessage: String? { return error?.localizedDescription }
+    public var error: Error?
+
+    public var hasPermissionError257: Bool {
+        guard let nsError = error as NSError? else { return false }
+        return (nsError.domain == "NSCocoaErrorDomain") && (nsError.code == 257)
+    }
+
     public var fileSize: Int64?
     public var creationDate: Date?
     public var modificationDate: Date?
 }
 
-public class URLReference: Equatable, Codable {
-
+public class URLReference: Equatable, Codable, CustomDebugStringConvertible {
+    public typealias Descriptor = String
+    
     public enum Location: Int, Codable, CustomStringConvertible {
         public static let allValues: [Location] =
             [.internalDocuments, .internalBackup, .internalInbox, .external]
@@ -39,36 +46,63 @@ public class URLReference: Equatable, Codable {
         public var description: String {
             switch self {
             case .internalDocuments:
-                return NSLocalizedString("Local (in-app copy)", comment: "Human-readable file location. 'Local' means the file is inside app sandbox.")
+                return NSLocalizedString(
+                    "[URLReference/Location] Local copy",
+                    bundle: Bundle.framework,
+                    value: "Local copy",
+                    comment: "Human-readable file location: the file is on device, inside the app sandbox. Example: 'File Location: Local copy'")
             case .internalInbox:
-                return NSLocalizedString("Local (in-app copy): Inbox", comment: "Human-readable file location. 'Local' means the file is inside app sandbox.")
+                return NSLocalizedString(
+                    "[URLReference/Location] Internal inbox",
+                    bundle: Bundle.framework,
+                    value: "Internal inbox",
+                    comment: "Human-readable file location: the file is on device, inside the app sandbox. 'Inbox' is a special directory for files that are being imported. Can be also 'Internal import'. Example: 'File Location: Internal inbox'")
             case .internalBackup:
-                return NSLocalizedString("Local (in-app copy): Backup", comment: "Human-readable file location. 'Local' means the file is inside app sandbox.")
+                return NSLocalizedString(
+                    "[URLReference/Location] Internal backup",
+                    bundle: Bundle.framework,
+                    value: "Internal backup",
+                    comment: "Human-readable file location: the file is on device, inside the app sandbox. 'Backup' is a dedicated directory for database backup files. Example: 'File Location: Internal backup'")
             case .external:
-                return NSLocalizedString("Another App / Cloud Storage", comment: "Human-readable file location. The file is situated in some other app or in cloud storage.")
+                return NSLocalizedString(
+                    "[URLReference/Location] Cloud storage / Another app",
+                    bundle: Bundle.framework,
+                    value: "Cloud storage / Another app",
+                    comment: "Human-readable file location. The file is situated either online / in cloud storage, or on the same device, but in some other app. Example: 'File Location: Cloud storage / Another app'")
             }
         }
     }
     
     private let data: Data
-    lazy private(set) var hash: ByteArray = CryptoManager.sha256(of: ByteArray(data: data))
+    lazy private(set) var hash: ByteArray = getHash()
     public let location: Location
+    private var url: URL?
     
     private enum CodingKeys: String, CodingKey {
         case data = "data"
         case location = "location"
+        case url = "url"
     }
     
     public init(from url: URL, location: Location) throws {
-        let resourceKeys = Set<URLResourceKey>(
-            [.canonicalPathKey, .nameKey, .fileSizeKey,
-            .creationDateKey, .contentModificationDateKey]
-        )
-        data = try url.bookmarkData(
-            options: [], 
-            includingResourceValuesForKeys: resourceKeys,
-            relativeTo: nil) 
+        let isAccessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if isAccessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        self.url = url
         self.location = location
+        if location.isInternal {
+            data = Data() 
+            hash = ByteArray(data: url.dataRepresentation).sha256
+        } else {
+            data = try url.bookmarkData(
+                options: [.minimalBookmark],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil) 
+            hash = ByteArray(data: data).sha256
+        }
     }
 
     public static func == (lhs: URLReference, rhs: URLReference) -> Bool {
@@ -78,7 +112,7 @@ public class URLReference: Equatable, Codable {
                 let rightURL = try? rhs.resolve() else { return false }
             return leftURL == rightURL
         } else {
-            return lhs.hash == rhs.hash
+            return !lhs.hash.isEmpty && (lhs.hash == rhs.hash)
         }
     }
     
@@ -86,13 +120,54 @@ public class URLReference: Equatable, Codable {
         return try! JSONEncoder().encode(self)
     }
     public static func deserialize(from data: Data) -> URLReference? {
-        return try? JSONDecoder().decode(URLReference.self, from: data)
+        guard let ref = try? JSONDecoder().decode(URLReference.self, from: data) else {
+            return nil
+        }
+        ref.hash = ref.getHash()
+        return ref
+    }
+    
+    public var debugDescription: String {
+        return " ‣ Location: \(location)\n" +
+            " ‣ URL: \(url?.relativeString ?? "nil")\n" +
+            " ‣ data: \(data.count) bytes"
+    }
+    
+    
+    private func getHash() -> ByteArray {
+        guard location.isInternal else {
+            return ByteArray(data: data).sha256
+        }
+
+        do {
+            let _url = try resolve()
+            return ByteArray(data: _url.dataRepresentation).sha256
+        } catch {
+            Diag.warning("Failed to resolve the URL: \(error.localizedDescription)")
+            return ByteArray() 
+        }
     }
     
     public func resolve() throws -> URL {
+        if let url = url, location.isInternal {
+            return url
+        }
+        
         var isStale = false
-        let url = try URL(resolvingBookmarkData: data, bookmarkDataIsStale: &isStale)
-        return url
+        let resolvedUrl = try URL(
+            resolvingBookmarkData: data,
+            options: [URL.BookmarkResolutionOptions.withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale)
+        self.url = resolvedUrl
+        return resolvedUrl
+    }
+    
+    public func getDescriptor() -> Descriptor? {
+        guard !info.hasError else {
+            return nil
+        }
+        return info.fileName
     }
     
     public lazy var info: FileInfo = getInfo()
@@ -114,14 +189,14 @@ public class URLReference: Equatable, Codable {
             }
             result = FileInfo(
                 fileName: url.lastPathComponent,
-                errorMessage: nil,
+                error: nil,
                 fileSize: url.fileSize,
                 creationDate: url.fileCreationDate,
                 modificationDate: url.fileModificationDate)
         } catch {
             result = FileInfo(
                 fileName: "?",
-                errorMessage: error.localizedDescription,
+                error: error,
                 fileSize: nil,
                 creationDate: nil,
                 modificationDate: nil)

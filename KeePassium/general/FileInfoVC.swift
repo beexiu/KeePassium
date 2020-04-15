@@ -25,23 +25,32 @@ class FileInfoCell: UITableViewCell {
             valueLabel.text = value
         }
     }
+    
+    override func awakeFromNib() {
+        super.awakeFromNib()
+        nameLabel?.font = UIFont.systemFont(forTextStyle: .subheadline, weight: .thin)
+        valueLabel?.font = UIFont.monospaceFont(forTextStyle: .body)
+    }
 }
 
 class FileInfoVC: UITableViewController {
     private var fields = [(String, String)]()
     
-    public static func make(urlRef: URLReference, popoverSource: UIView?) -> FileInfoVC {
+    private var dismissablePopoverDelegate = DismissablePopover()
+    
+    public static func make(urlRef: URLReference, at popoverAnchor: PopoverAnchor?) -> FileInfoVC {
         let vc = FileInfoVC.instantiateFromStoryboard()
         vc.setupFields(urlRef: urlRef)
         
-        if let popoverSource = popoverSource {
-            vc.modalPresentationStyle = .popover
-            if let popover = vc.popoverPresentationController {
-                popover.sourceView = popoverSource
-                popover.sourceRect = popoverSource.bounds
-                popover.permittedArrowDirections = [.left]
-                popover.delegate = vc
-            }
+        guard let popoverAnchor = popoverAnchor else {
+            return vc
+        }
+
+        vc.modalPresentationStyle = .popover
+        if let popover = vc.popoverPresentationController {
+            popoverAnchor.apply(to: popover)
+            popover.permittedArrowDirections = [.left]
+            popover.delegate = vc.dismissablePopoverDelegate
         }
         return vc
     }
@@ -50,27 +59,42 @@ class FileInfoVC: UITableViewController {
         let fileInfo = urlRef.info
         if let errorMessage = fileInfo.errorMessage {
             fields.append((
-                NSLocalizedString("Error", comment: "[FileInfo] Title of a field with an error message"),
+                NSLocalizedString(
+                    "[FileInfo/Field/valueError] Error",
+                    value: "Error",
+                    comment: "Title of a field with an error message"),
                 errorMessage
             ))
         }
         fields.append((
-            NSLocalizedString("File Name", comment: "[FileInfo] Field title"),
+            NSLocalizedString(
+                "[FileInfo/Field/title] File Name",
+                value: "File Name",
+                comment: "Field title"),
             fileInfo.fileName
         ))
         fields.append((
-            NSLocalizedString("File Location", comment: "[FileInfo] Field title"),
+            NSLocalizedString(
+                "[FileInfo/Field/title] File Location",
+                value: "File Location",
+                comment: "Field title"),
             urlRef.location.description
         ))
         if let fileSize = fileInfo.fileSize {
             fields.append((
-                NSLocalizedString("File Size", comment: "[FileInfo] Field title"),
+                NSLocalizedString(
+                    "[FileInfo/Field/title] File Size",
+                    value: "File Size",
+                    comment: "Field title"),
                 ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
             ))
         }
         if let creationDate = fileInfo.creationDate {
             fields.append((
-                NSLocalizedString("Creation Date", comment: "[FileInfo] Field title"),
+                NSLocalizedString(
+                    "[FileInfo/Field/title] Creation Date",
+                    value: "Creation Date",
+                    comment: "Field title"),
                 DateFormatter.localizedString(
                     from: creationDate,
                     dateStyle: .medium,
@@ -79,7 +103,10 @@ class FileInfoVC: UITableViewController {
         }
         if let modificationDate = fileInfo.modificationDate {
             fields.append((
-                NSLocalizedString("Last Modification Date", comment: "[FileInfo] Field title"),
+                NSLocalizedString(
+                    "[FileInfo/Field/title] Last Modification Date",
+                    value: "Last Modification Date",
+                    comment: "Field title"),
                 DateFormatter.localizedString(
                     from: modificationDate,
                     dateStyle: .medium,
@@ -105,7 +132,11 @@ class FileInfoVC: UITableViewController {
         change: [NSKeyValueChangeKey : Any]?,
         context: UnsafeMutableRawPointer?)
     {
-        preferredContentSize = tableView.contentSize
+        var preferredSize = tableView.contentSize
+        if #available(iOS 13, *) {
+            preferredSize.width = 400
+        }
+        self.preferredContentSize = preferredSize
     }
 
 
@@ -131,28 +162,5 @@ class FileInfoVC: UITableViewController {
         cell.name = fields[fieldIndex].0
         cell.value = fields[fieldIndex].1
         return cell
-    }
-}
-
-extension FileInfoVC: UIPopoverPresentationControllerDelegate {
-    func presentationController(
-        _ controller: UIPresentationController,
-        viewControllerForAdaptivePresentationStyle style: UIModalPresentationStyle
-        ) -> UIViewController?
-    {
-        let navVC = UINavigationController(rootViewController: controller.presentedViewController)
-        if style != .popover {
-            let doneButton = UIBarButtonItem(
-                barButtonSystemItem: .done,
-                target: self,
-                action: #selector(dismissPopover))
-            navVC.topViewController?.navigationItem.rightBarButtonItem = doneButton
-        }
-        return navVC
-    }
-    
-    @objc
-    private func dismissPopover() {
-        dismiss(animated: true, completion: nil)
     }
 }

@@ -16,15 +16,33 @@ public class Database1: Database {
         public var errorDescription: String? {
             switch self {
             case .prematureDataEnd:
-                return NSLocalizedString("Unexpected end of file. Corrupted DB file?", comment: "Error message")
+                return NSLocalizedString(
+                    "[Database1/FormatError] Unexpected end of file. Corrupted database file?",
+                    bundle: Bundle.framework,
+                    value: "Unexpected end of file. Corrupted database file?",
+                    comment: "Error message")
             case .corruptedField(let fieldName):
                 if fieldName != nil {
-                    return NSLocalizedString("Error parsing field \(fieldName!). Corrupted DB file?", comment: "Error message, with the name of problematic field")
+                    return String.localizedStringWithFormat(
+                        NSLocalizedString(
+                            "[Database1/FormatError] Error parsing field %@. Corrupted database file?",
+                            bundle: Bundle.framework,
+                            value: "Error parsing field %@. Corrupted database file?",
+                            comment: "Error message [fieldName: String]"),
+                        fieldName!)
                 } else {
-                    return NSLocalizedString("Database file is corrupted.", comment: "Error message")
+                    return NSLocalizedString(
+                        "[Database1/FormatError] Database file is corrupted.",
+                        bundle: Bundle.framework,
+                        value: "Database file is corrupted.",
+                        comment: "Error message")
                 }
             case .orphanedEntry:
-                return NSLocalizedString("Found an entry outside any group. Corrupted DB file?", comment: "Error message")
+                return NSLocalizedString(
+                    "[Database1/FormatError] Found an entry outside any group. Corrupted DB file?",
+                    bundle: Bundle.framework,
+                    value: "Found an entry outside any group. Corrupted DB file?",
+                    comment: "Error message")
             }
         }
     }
@@ -117,13 +135,14 @@ public class Database1: Database {
         return Header1.isSignatureMatches(data: data)
     }
 
-    override public func changeCompositeKey(to newKey: SecureByteArray) {
+    override public func changeCompositeKey(to newKey: CompositeKey) {
         compositeKey = newKey
     }
     
     override public func load(
+        dbFileName: String,
         dbFileData: ByteArray,
-        compositeKey: SecureByteArray,
+        compositeKey: CompositeKey,
         warnings: DatabaseLoadingWarnings
     ) throws {
         Diag.info("Loading KP1 database")
@@ -144,7 +163,7 @@ public class Database1: Database {
                 throw DatabaseError.invalidKey
             }
             
-            try loadContent(data: decryptedData) 
+            try loadContent(data: decryptedData, dbFileName: dbFileName)
             Diag.debug("Content loaded OK")
 
             self.compositeKey = compositeKey
@@ -154,14 +173,22 @@ public class Database1: Database {
         } catch let error as CryptoError {
             Diag.error("Crypto error [reason: \(error.localizedDescription)]")
             throw DatabaseError.loadError(reason: error.localizedDescription)
+        } catch let error as ChallengeResponseError {
+            Diag.error("Challenge-response error [reason: \(error.localizedDescription)]")
+            throw DatabaseError.loadError(reason: error.localizedDescription)
         } catch let error as FormatError {
             Diag.error("Format error [reason: \(error.localizedDescription)]")
             throw DatabaseError.loadError(reason: error.localizedDescription)
         } 
     }
     
-    func deriveMasterKey(compositeKey: SecureByteArray) throws {
+    func deriveMasterKey(compositeKey: CompositeKey) throws {
         Diag.debug("Start key derivation")
+        
+        guard compositeKey.challengeHandler == nil else {
+            throw ChallengeResponseError.notSupportedByDatabaseFormat
+        }
+        
         let kdf = AESKDF()
         progress.addChild(kdf.initProgress(), withPendingUnitCount: ProgressSteps.keyDerivation)
         let kdfParams = kdf.defaultParams
@@ -172,18 +199,38 @@ public class Database1: Database {
             key: AESKDF.transformRoundsParam,
             value: VarDict.TypedValue(value: UInt64(header.transformRounds)))
         
-        let transformedKey = try kdf.transform(key: compositeKey, params: kdfParams)
-        masterKey = SecureByteArray(ByteArray.concat(header.masterSeed, transformedKey).sha256)
+        let combinedComponents: SecureByteArray
+        if compositeKey.state == .processedComponents {
+            combinedComponents = keyHelper.combineComponents(
+                passwordData: compositeKey.passwordData!, 
+                keyFileData: compositeKey.keyFileData!    
+            )
+            compositeKey.setCombinedStaticComponents(combinedComponents)
+        } else if compositeKey.state >= .combinedComponents {
+            combinedComponents = compositeKey.combinedStaticComponents! 
+        } else {
+            preconditionFailure("Unexpected key state")
+        }
+        
+        let keyToTransform = keyHelper.getKey(fromCombinedComponents: combinedComponents)
+        let transformedKey = try kdf.transform(key: keyToTransform, params: kdfParams)
+        let secureMasterSeed = SecureByteArray(header.masterSeed)
+        masterKey = SecureByteArray.concat(secureMasterSeed, transformedKey).sha256
+        compositeKey.setFinalKey(masterKey)
     }
     
-    private func loadContent(data: ByteArray) throws {
+    private func loadContent(data: ByteArray, dbFileName: String) throws {
         let stream = data.asInputStream()
         stream.open()
         defer { stream.close() }
         
         let loadProgress = ProgressEx()
         loadProgress.totalUnitCount = Int64(header.groupCount + header.entryCount)
-        loadProgress.localizedDescription = NSLocalizedString("Parsing content", comment: "Status message: processing the content of a database")
+        loadProgress.localizedDescription = NSLocalizedString(
+            "[Database1/Progress] Parsing content",
+            bundle: Bundle.framework,
+            value: "Parsing content",
+            comment: "Status message: processing the content of a database")
         self.progress.addChild(loadProgress, withPendingUnitCount: ProgressSteps.parsing)
         
         Diag.debug("Loading groups")
@@ -220,7 +267,7 @@ public class Database1: Database {
         let _root = Group1(database: self)
         _root.level = -1 
         _root.iconID = Group.defaultIconID 
-        _root.name = "/" // TODO: give the "virtual" root group a more meaningful name
+        _root.name = dbFileName
         self.root = _root
         
         var parentGroup = _root
@@ -245,6 +292,7 @@ public class Database1: Database {
                 group.add(entry: entry)
             }
         }
+        backupGroup?.deepSetDeleted(true)
     }
     
     func decrypt(data: ByteArray) throws -> ByteArray {
@@ -257,7 +305,7 @@ public class Database1: Database {
             return decrypted
         case .twofish:
             Diag.debug("Decrypting Twofish cipher")
-            let cipher = TwofishDataCipher()
+            let cipher = TwofishDataCipher(isPaddingLikelyMessedUp: false)
             progress.addChild(cipher.initProgress(), withPendingUnitCount: ProgressSteps.decryption)
             let decrypted = try cipher.decrypt(cipherText: data, key: masterKey, iv: header.initialVector)
             return decrypted
@@ -280,7 +328,11 @@ public class Database1: Database {
             
             let packingProgress = ProgressEx()
             packingProgress.totalUnitCount = Int64(groups.count + entries.count + metaStreamEntries.count)
-            packingProgress.localizedDescription = NSLocalizedString("Packing the content", comment: "Status message: collecting database items into a single package")
+            packingProgress.localizedDescription = NSLocalizedString(
+                "[Database1/Progress] Packing the content",
+                bundle: Bundle.framework,
+                value: "Packing the content",
+                comment: "Status message: collecting database items into a single package")
             progress.addChild(packingProgress, withPendingUnitCount: ProgressSteps.packing)
             Diag.debug("Packing the content")
             for group in groups {
@@ -325,6 +377,10 @@ public class Database1: Database {
             outStream.write(data: encryptedContent)
             return outStream.data!
         } catch let error as CryptoError {
+            Diag.error("Crypto error [reason: \(error.localizedDescription)]")
+            throw DatabaseError.saveError(reason: error.localizedDescription)
+        } catch let error as ChallengeResponseError {
+            Diag.error("Challenge-response error [reason: \(error.localizedDescription)]")
             throw DatabaseError.saveError(reason: error.localizedDescription)
         } 
     }
@@ -341,7 +397,7 @@ public class Database1: Database {
                 iv: header.initialVector) 
         case .twofish:
             Diag.debug("Encrypting Twofish")
-            let cipher = TwofishDataCipher()
+            let cipher = TwofishDataCipher(isPaddingLikelyMessedUp: false)
             progress.addChild(cipher.initProgress(), withPendingUnitCount: ProgressSteps.encryption)
             return try cipher.encrypt(
                 plainText: data,
@@ -369,8 +425,8 @@ public class Database1: Database {
         group.collectAllEntries(to: &subEntries)
         
         subEntries.forEach { (entry) in
-            backupGroup.moveEntry(entry: entry)
-            entry.accessed()
+            entry.move(to: backupGroup)
+            entry.touch(.accessed, updateParents: false)
         }
         Diag.debug("Delete group OK")
     }
@@ -386,8 +442,8 @@ public class Database1: Database {
             return
         }
         
-        entry.accessed()
-        backupGroup.moveEntry(entry: entry)
+        entry.move(to: backupGroup)
+        entry.touch(.accessed, updateParents: false)
         Diag.info("Delete entry OK")
     }
     

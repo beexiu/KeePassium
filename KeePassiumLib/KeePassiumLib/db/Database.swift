@@ -16,11 +16,23 @@ public enum DatabaseError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .loadError:
-            return NSLocalizedString("Cannot open database", comment: "Error message while opening a database")
+            return NSLocalizedString(
+                "[DatabaseError] Cannot open database",
+                bundle: Bundle.framework,
+                value: "Cannot open database",
+                comment: "Error message while opening a database")
         case .invalidKey:
-            return NSLocalizedString("Invalid password or key file", comment: "Error message - the user provided wrong master key for decryption.")
+            return NSLocalizedString(
+                "[DatabaseError] Invalid password or key file",
+                bundle: Bundle.framework,
+                value: "Invalid password or key file",
+                comment: "Error message: user provided a wrong master key for decryption.")
         case .saveError:
-            return NSLocalizedString("Cannot save database", comment: "Error message while saving a database")
+            return NSLocalizedString(
+                "[DatabaseError] Cannot save database",
+                bundle: Bundle.framework,
+                value: "Cannot save database",
+                comment: "Error message while saving a database")
         }
     }
     public var failureReason: String? {
@@ -77,7 +89,7 @@ open class Database: Eraseable {
 
     public internal(set) var progress = ProgressEx()
 
-    internal var compositeKey = SecureByteArray()
+    internal var compositeKey = CompositeKey.empty
     
     public func initProgress() -> ProgressEx {
         progress = ProgressEx()
@@ -107,8 +119,9 @@ open class Database: Eraseable {
     }
     
     public func load(
+        dbFileName: String,
         dbFileData: ByteArray,
-        compositeKey: SecureByteArray,
+        compositeKey: CompositeKey,
         warnings: DatabaseLoadingWarnings
     ) throws {
         fatalError("Pure virtual method")
@@ -118,7 +131,7 @@ open class Database: Eraseable {
         fatalError("Pure virtual method")
     }
     
-    public func changeCompositeKey(to newKey: SecureByteArray) {
+    public func changeCompositeKey(to newKey: CompositeKey) {
         fatalError("Pure virtual method")
     }
     

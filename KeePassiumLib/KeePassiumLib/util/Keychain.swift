@@ -11,12 +11,23 @@ import Foundation
 public enum KeychainError: LocalizedError {
     case generic(code: Int)
     case unexpectedFormat
+    
     public var errorDescription: String? {
         switch self {
         case .generic(let code):
-            return NSLocalizedString("Keychain error (code \(code)) ", comment: "Generic error message about system keychain, with an error code.")
+            return String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[KeychainError/generic] Keychain error (code %d) ",
+                    bundle: Bundle.framework,
+                    value: "Keychain error (code %d) ",
+                    comment: "Generic error message about system keychain. [errorCode: Int]"),
+                code)
         case .unexpectedFormat:
-            return NSLocalizedString("Keychain error: unexpected data format", comment: "Error message about system keychain.")
+            return NSLocalizedString(
+                "[KeychainError/unexpectedFormat] Keychain error: unexpected data format",
+                bundle: Bundle.framework,
+                value: "Keychain error: unexpected data format",
+                comment: "Error message about system keychain.")
         }
     }
 }
@@ -26,14 +37,23 @@ public class Keychain {
     
     private static let accessGroup: String? = nil
     private enum Service: String {
-        static let allValues: [Service] = [.general, .databaseKeys]
+        static let allValues: [Service] = [.general, .databaseKeys, databaseSettings, .premium]
         
         case general = "KeePassium"
         case databaseKeys = "KeePassium.dbKeys"
+        case databaseSettings = "KeePassium.dbSettings"
+        case premium = "KeePassium.premium"
     }
     private let appPasscodeAccount = "appPasscode"
+    private let premiumExpiryDateAccount = "premiumExpiryDate"
+    private let premiumProductAccount = "premiumProductID"
     
     private init() {
+        cleanupObsoleteKeys()
+    }
+    
+    private func cleanupObsoleteKeys() {
+        try? remove(service: .databaseKeys, account: nil)
     }
     
     
@@ -106,6 +126,12 @@ public class Keychain {
         }
     }
     
+    public func removeAll() throws {
+        for service in Service.allValues {
+            try remove(service: service, account: nil) 
+        }
+    }
+
     
     public func setAppPasscode(_ passcode: String) throws {
         let dataHash = ByteArray(utf8String: passcode).sha256.asData
@@ -131,37 +157,63 @@ public class Keychain {
         try remove(service: .general, account: appPasscodeAccount) 
     }
     
-
-    public func setDatabaseKey(databaseRef: URLReference, key: SecureByteArray) throws {
-        guard !databaseRef.info.hasError else { return }
-        
-        let account = databaseRef.info.fileName
-        try set(service: .databaseKeys, account: account, data: key.asData) 
-    }
-
-    public func getDatabaseKey(databaseRef: URLReference) throws -> SecureByteArray? {
-        guard !databaseRef.info.hasError else { return nil }
-        
-        let account = databaseRef.info.fileName
-        guard let data = try get(service: .databaseKeys, account: account) else {
+    
+    internal func getDatabaseSettings(for databaseRef: URLReference) throws -> DatabaseSettings? {
+        guard !databaseRef.info.hasError else {
+            Diag.warning("Database with an error, cannot load DB-specific settings")
             return nil
         }
-        return SecureByteArray(data: data)
-    }
 
-    public func removeDatabaseKey(databaseRef: URLReference) throws {
-        guard !databaseRef.info.hasError else { return }
-        let account = databaseRef.info.fileName
-        try remove(service: .databaseKeys, account: account)
-    }
-    
-    public func removeAllDatabaseKeys() throws {
-        try remove(service: .databaseKeys, account: nil)
-    }
-    
-    public func removeAll() throws {
-        for service in Service.allValues {
-            try remove(service: service, account: nil) 
+        guard let account = databaseRef.getDescriptor() else { return nil }
+        if let data = try get(service: .databaseSettings, account: account) { 
+            return DatabaseSettings.deserialize(from: data)
         }
+        return nil
+    }
+    
+    internal func setDatabaseSettings(_ dbSettings: DatabaseSettings, for databaseRef: URLReference) throws {
+        guard !databaseRef.info.hasError else { return }
+        
+        let data = dbSettings.serialize()
+        guard let account = databaseRef.getDescriptor() else { return }
+        try set(service: .databaseSettings, account: account, data: data)
+    }
+    
+    internal func removeDatabaseSettings(for databaseRef: URLReference) throws {
+        guard let account = databaseRef.getDescriptor() else { return }
+        try remove(service: .databaseSettings, account: account) 
+    }
+    
+    
+    
+    public func setPremiumExpiry(for product: InAppProduct, to expiryDate: Date) throws {
+        let timestampBytes = UInt64(expiryDate.timeIntervalSinceReferenceDate).data
+        let productID = product.rawValue.dataUsingUTF8StringEncoding
+        try set(service: .premium, account: premiumProductAccount, data: productID)
+        try set(service: .premium, account: premiumExpiryDateAccount, data: timestampBytes.asData)
+    }
+    
+    #if DEBUG
+    public func clearPremiumExpiryDate() throws {
+        try remove(service: .premium, account: premiumExpiryDateAccount)
+    }
+    #endif
+    
+    public func getPremiumExpiryDate() throws -> Date? {
+        guard let data = try get(service: .premium, account: premiumExpiryDateAccount) else {
+            return nil
+        }
+        guard let timestamp = UInt64(data: ByteArray(data: data)) else {
+            assertionFailure()
+            return nil
+        }
+        return Date(timeIntervalSinceReferenceDate: Double(timestamp))
+    }
+    
+    public func getPremiumProduct() throws -> InAppProduct? {
+        guard let data = try get(service: .premium, account: premiumProductAccount),
+            let productIDString = String(data: data, encoding: .utf8) else { return nil }
+        guard let product = InAppProduct(rawValue: productIDString) else { return nil }
+        return product
     }
 }

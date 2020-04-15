@@ -26,19 +26,57 @@ public class Database2: Database {
         public var errorDescription: String? {
             switch self {
             case .prematureDataEnd:
-                return NSLocalizedString("Unexpected end of file. Corrupted file?", comment: "Error message")
+                return NSLocalizedString(
+                    "[Database2/FormatError] Unexpected end of file. Corrupted file?",
+                    bundle: Bundle.framework,
+                    value: "Unexpected end of file. Corrupted file?",
+                    comment: "Error message")
             case .negativeBlockSize(let blockIndex):
-                return NSLocalizedString("Corrupted database file (negative block #\(blockIndex) size)", comment: "Error message")
+                return String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/FormatError] Corrupted database file (block %d has negative size)",
+                        bundle: Bundle.framework,
+                        value: "Corrupted database file (block %d has negative size)",
+                        comment: "Error message [blockIndex: Int]"),
+                    blockIndex)
             case .parsingError(let reason):
-                return NSLocalizedString("Cannot parse database. \(reason)", comment: "An error message. Parsing refers to the analysis/understanding of file content (do not confuse with reading it).")
+                return String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/FormatError] Cannot parse database. %@",
+                        bundle: Bundle.framework,
+                        value: "Cannot parse database. %@",
+                        comment: "Error message. Parsing refers to the analysis/understanding of file content. [reason: String]"),
+                    reason)
             case .blockIDMismatch:
-                return NSLocalizedString("Unexpected block ID.", comment: "Error message: wrong ID of a data block")
+                return NSLocalizedString(
+                    "[Database2/FormatError] Unexpected block ID.",
+                    bundle: Bundle.framework,
+                    value: "Unexpected block ID.",
+                    comment: "Error message: wrong ID of a data block")
             case .blockHashMismatch(let blockIndex):
-                return NSLocalizedString("Block #\(blockIndex) hash mismatch.", comment: "Error message: hash(checksum) of a data block is wrong")
+                return String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/FormatError] Corrupted database file (hash mismatch in block %d)",
+                        bundle: Bundle.framework,
+                        value: "Corrupted database file (hash mismatch in block %d)",
+                        comment: "Error message: hash(checksum) of a data block is wrong. [blockIndex: Int]"),
+                    blockIndex)
             case .blockHMACMismatch(let blockIndex):
-                return NSLocalizedString("Block #\(blockIndex) HMAC mismatch.", comment: "Error message: HMAC value (kind of checksum) of a data block is wrong")
+                return String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/FormatError] Corrupted database file (HMAC mismatch in block %d)",
+                        bundle: Bundle.framework,
+                        value: "Corrupted database file (HMAC mismatch in block %d)",
+                        comment: "Error message: HMAC value (kind of checksum) of a data block is wrong. [blockIndex: Int]"),
+                    blockIndex)
             case .compressionError(let reason):
-                return NSLocalizedString("Gzip error: \(reason)", comment: "Generic error message about Gzip compression algorithm")
+                return String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/FormatError] Gzip error: %@",
+                        bundle: Bundle.framework,
+                        value: "Gzip error: %@",
+                        comment: "Error message about Gzip compression algorithm. [reason: String]"),
+                    reason)
             }
         }
     }
@@ -62,8 +100,9 @@ public class Database2: Database {
     private(set) var meta: Meta2!
     public var binaries: [Binary2.ID: Binary2] = [:]
     public var customIcons: [UUID: CustomIcon2] { return meta.customIcons }
+    public var defaultUserName: String { return meta.defaultUserName }
     private var cipherKey = SecureByteArray()
-    private var hmacKey = ByteArray()
+    private var hmacKey = SecureByteArray()
     private var deletedObjects: ContiguousArray<DeletedObject2> = []
     
     override public var keyHelper: KeyHelper { return _keyHelper }
@@ -115,14 +154,20 @@ public class Database2: Database {
     }
     
     override public func load(
+        dbFileName: String,
         dbFileData: ByteArray,
-        compositeKey: SecureByteArray,
+        compositeKey: CompositeKey,
         warnings: DatabaseLoadingWarnings
     ) throws {
         Diag.info("Loading KP2 database")
         progress.completedUnitCount = 0
         progress.totalUnitCount = ProgressSteps.all
-        progress.localizedAdditionalDescription = NSLocalizedString("Loading database", comment: "Progress bar status")
+        progress.localizedAdditionalDescription = NSLocalizedString(
+            "[Database2/Progress] Loading database",
+            bundle: Bundle.framework,
+            value: "Loading database",
+            comment: "Progress bar status")
+        
         do {
             try header.read(data: dbFileData) 
             Diag.debug("Header read OK [format: \(header.formatVersion)]")
@@ -167,9 +212,13 @@ public class Database2: Database {
                 Diag.debug("Inner header read OK")
             }
             
+            try removeGarbageAfterXML(data: xmlData) 
+            
             try load(xmlData: xmlData, warnings: warnings) 
             
-            propagateDeletedStatus()
+            if let backupGroup = getBackupGroup(createIfMissing: false) {
+                backupGroup.deepSetDeleted(true)
+            }
             
             checkAttachmentsIntegrity(warnings: warnings)
             
@@ -183,23 +232,34 @@ public class Database2: Database {
         } catch let error as CryptoError {
             Diag.error("Crypto error [reason: \(error.localizedDescription)]")
             throw DatabaseError.loadError(reason: error.localizedDescription)
+        } catch let error as ChallengeResponseError {
+            Diag.error("Challenge-response error [reason: \(error.localizedDescription)]")
+            throw DatabaseError.loadError(reason: error.localizedDescription)
         } catch let error as FormatError {
             Diag.error("Format error [reason: \(error.localizedDescription)]")
             throw DatabaseError.loadError(reason: error.localizedDescription)
         } catch let error as GzipError {
             Diag.error("Gzip error [kind: \(error.kind), message: \(error.message)]")
-            throw DatabaseError.loadError(reason: NSLocalizedString("Error unpacking database (\(error.message))", comment: "Error message. Unpacking is decompression of compressed data."))
+            let reason = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Loading/Error] Error unpacking database: %@",
+                    bundle: Bundle.framework,
+                    value: "Error unpacking database: %@",
+                    comment: "Error message about Gzip compression algorithm. [errorMessage: String]"),
+                error.localizedDescription)
+            throw DatabaseError.loadError(reason: reason)
         }
         
         self.compositeKey = compositeKey
     }
     
     func xmlStringToDate(_ string: String?) -> Date? {
+        let trimmedString = string?.trimmingCharacters(in: .whitespacesAndNewlines)
         switch header.formatVersion {
         case .v3:
-            return Date(iso8601string: string)
+            return Date(iso8601string: trimmedString)
         case .v4:
-            return Date(base64Encoded: string)
+            return Date(base64Encoded: trimmedString)
         }
     }
     
@@ -240,7 +300,11 @@ public class Database2: Database {
         let allBlocksData = ByteArray(capacity: blockBytesCount)
         let readingProgress = ProgressEx()
         readingProgress.totalUnitCount = Int64(blockBytesCount)
-        readingProgress.localizedAdditionalDescription = NSLocalizedString("Reading database content", comment: "Status message")
+        readingProgress.localizedAdditionalDescription = NSLocalizedString(
+            "[Database2/Progress] Reading database content",
+            bundle: Bundle.framework,
+            value: "Reading database content",
+            comment: "Progress bar status")
         progress.addChild(readingProgress, withPendingUnitCount: ProgressSteps.readingBlocks)
         var blockIndex: UInt64 = 0
         while true {
@@ -310,7 +374,11 @@ public class Database2: Database {
         var blockID: UInt32 = 0
         let readingProgress = ProgressEx()
         readingProgress.totalUnitCount = Int64(decryptedData.count - startData.count)
-        readingProgress.localizedAdditionalDescription = NSLocalizedString("Reading database content", comment: "Status message")
+        readingProgress.localizedAdditionalDescription = NSLocalizedString(
+            "[Database2/Progress] Reading database content",
+            bundle: Bundle.framework,
+            value: "Reading database content",
+            comment: "Progress bar status")
         progress.addChild(readingProgress, withPendingUnitCount: ProgressSteps.readingBlocks)
         while(true) {
             guard let inBlockID: UInt32 = decryptedStream.readUInt32() else {
@@ -351,6 +419,41 @@ public class Database2: Database {
         }
         readingProgress.completedUnitCount = readingProgress.totalUnitCount
         return blocksData
+    }
+
+    
+    private func removeGarbageAfterXML(data: ByteArray) throws {
+        guard header.dataCipher is TwofishDataCipher else { return }
+        
+        let finalXMLTagBytes = ("</" + Xml2.keePassFile + ">").arrayUsingUTF8StringEncoding
+        let finalTagSize = finalXMLTagBytes.count
+        guard data.count > finalTagSize else { return }
+        
+        let lastBytes = data.withBytes { $0[(data.count - finalTagSize)..<data.count] }
+        if lastBytes.elementsEqual(finalXMLTagBytes) {
+            return
+        }
+        
+        let searchFrom = data.count - finalTagSize - 2 * Twofish.blockSize
+        let searchTo = data.count - finalTagSize
+        guard searchFrom > 0 && searchTo > 0 else { return }
+        var closingTagIndex: Int? = nil
+        data.withBytes {
+            for i in searchFrom...searchTo {
+                let slice = $0[i..<(i + finalTagSize)]
+                if slice.elementsEqual(finalXMLTagBytes) {
+                    closingTagIndex = i
+                    break
+                }
+            }
+        }
+
+        guard let _closingTagIndex = closingTagIndex else {
+            Diag.warning("Failed to remove padding from XML content")
+            throw CryptoError.paddingError(code: 100)
+        }
+        Diag.warning("Removed random padding from XML data")
+        data.trim(toCount: _closingTagIndex + finalTagSize)
     }
 
     func load(xmlData: ByteArray, warnings: DatabaseLoadingWarnings) throws {
@@ -440,28 +543,60 @@ public class Database2: Database {
         }
     }
     
-    private func propagateDeletedStatus() {
-        if let backupGroup = getBackupGroup(createIfMissing: false) {
-            var deletedGroups = [Group2]() as [Group]
-            var deletedEntries = [Entry2]() as [Entry]
-            backupGroup.collectAllChildren(groups: &deletedGroups, entries: &deletedEntries)
-            deletedGroups.forEach { $0.isDeleted = true }
-            deletedEntries.forEach { $0.isDeleted = true }
-        }
-    }
-    
-    func deriveMasterKey(compositeKey: SecureByteArray, cipher: DataCipher) throws {
+    func deriveMasterKey(compositeKey: CompositeKey, cipher: DataCipher) throws {
         Diag.debug("Start key derivation")
         progress.addChild(header.kdf.initProgress(), withPendingUnitCount: ProgressSteps.keyDerivation)
-        let transformedKey = try header.kdf.transform(key: compositeKey, params: header.kdfParams)
-        let joinedKey = ByteArray.concat(header.masterSeed, transformedKey)
+        
+        var combinedComponents: SecureByteArray
+        if compositeKey.state == .processedComponents {
+            combinedComponents = keyHelper.combineComponents(
+                passwordData: compositeKey.passwordData!, 
+                keyFileData: compositeKey.keyFileData!    
+            )
+            compositeKey.setCombinedStaticComponents(combinedComponents)
+        } else if compositeKey.state >= .combinedComponents {
+            combinedComponents = compositeKey.combinedStaticComponents! 
+        } else {
+            preconditionFailure("Unexpected key state")
+        }
+        
+        let secureMasterSeed = SecureByteArray(header.masterSeed)
+        let joinedKey: SecureByteArray
+        switch header.formatVersion {
+        case .v3:
+            
+            let keyToTransform = keyHelper.getKey(fromCombinedComponents: combinedComponents)
+            
+            let transformedKey = try header.kdf.transform(
+                key: keyToTransform,
+                params: header.kdfParams)
+            
+            let challengeResponse = try compositeKey.getResponse(challenge: secureMasterSeed) 
+            joinedKey = SecureByteArray.concat(secureMasterSeed, challengeResponse, transformedKey)
+        case .v4:
+            
+            let challenge = try header.kdf.getChallenge(header.kdfParams) 
+            let secureChallenge = SecureByteArray(challenge)
+
+            let challengeResponse = try compositeKey.getResponse(challenge: secureChallenge) 
+            combinedComponents = SecureByteArray.concat(combinedComponents, challengeResponse)
+            
+            let keyToTransform = keyHelper.getKey(fromCombinedComponents: combinedComponents)
+            
+            let transformedKey = try header.kdf.transform(
+                key: keyToTransform,
+                params: header.kdfParams)
+            joinedKey = SecureByteArray.concat(secureMasterSeed, transformedKey)
+        }
         self.cipherKey = cipher.resizeKey(key: joinedKey)
-        let one = ByteArray(bytes: [1])
-        self.hmacKey = ByteArray.concat(joinedKey, one).sha512
+        let one = SecureByteArray(bytes: [1])
+        self.hmacKey = SecureByteArray.concat(joinedKey, one).sha512
+        compositeKey.setFinalKey(hmacKey)
     }
     
-    override public func changeCompositeKey(to newKey: SecureByteArray) {
-        compositeKey = newKey
+    override public func changeCompositeKey(to newKey: CompositeKey) {
+        compositeKey = newKey.clone()
+        meta.masterKeyChangedTime = Date.now
     }
     
     override public func getBackupGroup(createIfMissing: Bool) -> Group? {
@@ -487,6 +622,7 @@ public class Database2: Database {
         if createIfMissing {
             let backupGroup = meta.createRecycleBinGroup()
             root.add(group: backupGroup)
+            backupGroup.isDeleted = true
             Diag.verbose("RecycleBin group created")
             return backupGroup
         }
@@ -516,6 +652,8 @@ public class Database2: Database {
         var allEntries = [Entry]()
         root?.collectAllEntries(to: &allEntries)
         
+        maybeFixAttachmentNames(entries: allEntries, warnings: warnings)
+        
         var usedIDs = Set<Binary2.ID>() 
         allEntries.forEach { (entry) in
             insertAllAttachmentIDs(of: entry as! Entry2, into: &usedIDs)
@@ -532,7 +670,13 @@ public class Database2: Database {
         
         if unusedBinaries.count > 0 {
             let lastUsedAppName = warnings.databaseGenerator ?? ""
-            let warningMessage = NSLocalizedString("The database contains some attachments that are not used in any entry. Most likely, they have been forgotten by the last used app (\(lastUsedAppName)). However, this can also be a sign of data corruption. \nPlease make sure to have a backup of your database before changing anything.", comment: "A warning about unused attachments after loading the database.")
+            let warningMessage = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Loading/Warning/unusedAttachments]",
+                    bundle: Bundle.framework,
+                    value: "The database contains some attachments that are not used in any entry. Most likely, they have been forgotten by the last used app (%@). However, this can also be a sign of data corruption. \nPlease make sure to have a backup of your database before changing anything.",
+                    comment: "A warning about unused attachments after loading the database. [lastUsedAppName: String]"),
+                lastUsedAppName)
             warnings.messages.append(warningMessage)
             
             let unusedIDs = unusedBinaries
@@ -553,7 +697,14 @@ public class Database2: Database {
                 .joined(separator: "\n ") 
             
             let lastUsedAppName = warnings.databaseGenerator ?? ""
-            let warningMessage = NSLocalizedString("Attachments of some entries are missing data. This is a sign of database corruption, most likely by the last used app (\(lastUsedAppName)). KeePassium will preserve the empty attachments, but cannot restore them. You should restore your database from a backup copy. \n\nMissing attachments: \(attachmentNames)", comment: "A warning about missing attachments after loading the database.")
+            let warningMessage = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Loading/Warning/missingBinaries]",
+                    bundle: Bundle.framework,
+                    value: "Attachments of some entries are missing data. This is a sign of database corruption, most likely by the last used app (%@). KeePassium will preserve the empty attachments, but cannot restore them. You should restore your database from a backup copy. \n\nMissing attachments: %@",
+                    comment: "A warning about missing attachments after loading the database. [lastUsedAppName: String, attachmentNames: String]"),
+                lastUsedAppName,
+                attachmentNames)
             warnings.messages.append(warningMessage)
 
             let missingIDs = missingBinaries
@@ -561,6 +712,49 @@ public class Database2: Database {
                 .joined(separator: ", ")
             Diag.warning("Some entries refer to non-existent binaries [IDs: \(missingIDs)]")
         }
+    }
+    
+    private func maybeFixAttachmentNames(entries: [Entry], warnings: DatabaseLoadingWarnings) {
+        func maybeFixAttachmentNames(entry: Entry2) -> Bool {
+            var isSomethingFixed = false
+            entry.attachments.forEach {
+                if $0.name.isEmpty {
+                    $0.name = "?" 
+                    isSomethingFixed = true
+                }
+            }
+            return isSomethingFixed
+        }
+        
+        var affectedEntries = [Entry2]()
+        for entry in entries {
+            let entry2 = entry as! Entry2
+            let isEntryAffected = maybeFixAttachmentNames(entry: entry2)
+            let isHistoryAffected = entry2.history.reduce(false) { (result, historyEntry) in
+                return result || maybeFixAttachmentNames(entry: historyEntry)
+            }
+            if isEntryAffected || isHistoryAffected {
+                affectedEntries.append(entry2)
+            }
+        }
+        
+        if affectedEntries.isEmpty {
+            return
+        }
+        let listOfEntryNames = affectedEntries
+            .compactMap { $0.getGroupPath() + "/" + $0.title } 
+            .map { "\"\($0)\"" } 
+            .joined(separator: "\n ") 
+        
+        let warningMessage = String.localizedStringWithFormat(
+            NSLocalizedString(
+                "[Database2/Loading/Warning/namelessAttachments]",
+                bundle: Bundle.framework,
+                value: "Some entries have attachments without a name. This is a sign of previous database corruption.\n\n Please review attached files in the following entries (and their history):\n%@",
+                comment: "A warning about nameless attachments, shown after loading the database. [listOfEntryNames: String]"),
+            listOfEntryNames)
+        Diag.warning(warningMessage)
+        warnings.messages.append(warningMessage)
     }
     
     private func checkCustomFieldsIntegrity(warnings: DatabaseLoadingWarnings) {
@@ -579,7 +773,13 @@ public class Database2: Database {
         let entryPaths = problematicEntries
             .map { entry in "'\(entry.title)' in '\(entry.getGroupPath())'" }
             .joined(separator: "\n")
-        let warningMessage = NSLocalizedString("Some entries have custom field(s) with empty names. This can be a sign of data corruption. Please check these entries:\n\n\(entryPaths)", comment: "A warning about misformatted custom fields after loading the database.")
+        let warningMessage = String.localizedStringWithFormat(
+            NSLocalizedString(
+                "[Database2/Loading/Warning/namelessCustomFields]",
+                bundle: Bundle.framework,
+                value: "Some entries have custom field(s) with empty names. This can be a sign of data corruption. Please check these entries:\n\n%@",
+                comment: "A warning about misformatted custom fields after loading the database. [entryPaths: String]"),
+            entryPaths)
         warnings.messages.append(warningMessage)
     }
     
@@ -665,6 +865,9 @@ public class Database2: Database {
         } catch let error as CryptoError {
             Diag.error("Crypto error [reason: \(error.localizedDescription)]")
             throw DatabaseError.saveError(reason: error.localizedDescription)
+        } catch let error as ChallengeResponseError {
+            Diag.error("Challenge-response error [reason: \(error.localizedDescription)]")
+            throw DatabaseError.saveError(reason: error.localizedDescription)
         }
 
         
@@ -737,11 +940,23 @@ public class Database2: Database {
             throw DatabaseError.saveError(reason: error.localizedDescription)
         } catch let error as GzipError {
             Diag.error("Gzip error [kind: \(error.kind), message: \(error.message)]")
-            let errMsg = NSLocalizedString("Data compression error: \(error.localizedDescription)", comment: "Error message")
+            let errMsg = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Saving/Error] Data compression error: %@",
+                    bundle: Bundle.framework,
+                    value: "Data compression error: %@",
+                    comment: "Error message while saving a database. [errorDescription: String]"),
+                error.localizedDescription)
             throw DatabaseError.saveError(reason: errMsg)
         } catch let error as CryptoError {
             Diag.error("Crypto error [reason: \(error.localizedDescription)]")
-            let errMsg = NSLocalizedString("Encryption error: \(error.localizedDescription)", comment: "Error message")
+            let errMsg = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Saving/Error] Encryption error: %@",
+                    bundle: Bundle.framework,
+                    value: "Encryption error: %@",
+                    comment: "Error message while saving a database. [errorDescription: String]"),
+                error.localizedDescription)
             throw DatabaseError.saveError(reason: errMsg)
         }
     }
@@ -754,7 +969,11 @@ public class Database2: Database {
         
         let writeProgress = ProgressEx()
         writeProgress.totalUnitCount = Int64(data.count)
-        writeProgress.localizedAdditionalDescription = NSLocalizedString("Writing encrypted blocks", comment: "Status message")
+        writeProgress.localizedAdditionalDescription = NSLocalizedString(
+            "[Database2/Progress] Writing encrypted blocks",
+            bundle: Bundle.framework,
+            value: "Writing encrypted blocks",
+            comment: "Progress bar status")
         progress.addChild(writeProgress, withPendingUnitCount: ProgressSteps.writingBlocks)
         
         Diag.verbose("\(data.count) bytes to write")
@@ -795,7 +1014,13 @@ public class Database2: Database {
                 Diag.verbose("Gzip compression OK")
             } catch let error as GzipError {
                 Diag.error("Gzip error [kind: \(error.kind), message: \(error.message)]")
-                let errMsg = NSLocalizedString("Data compression error: \(error.localizedDescription)", comment: "Error message")
+                let errMsg = String.localizedStringWithFormat(
+                    NSLocalizedString(
+                        "[Database2/Saving/Error] Data compression error: %@",
+                        bundle: Bundle.framework,
+                        value: "Data compression error: %@",
+                        comment: "Error message while saving a database. [errorDescription: String]"),
+                    error.localizedDescription)
                 throw DatabaseError.saveError(reason: errMsg)
             }
         } else {
@@ -824,7 +1049,14 @@ public class Database2: Database {
             Diag.verbose("Encryption OK")
         } catch let error as CryptoError {
             Diag.error("Crypto error [message: \(error.localizedDescription)]")
-            let errMsg = NSLocalizedString("Encryption error: \(error.localizedDescription)", comment: "Error message")
+            let errMsg = String.localizedStringWithFormat(
+                NSLocalizedString(
+                    "[Database2/Saving/Error] Encryption error: %@",
+                    bundle: Bundle.framework,
+                    value: "Encryption error: %@",
+                    comment: "Error message while saving a database. [errorDescription: String]"),
+                error.localizedDescription)
+
             throw DatabaseError.saveError(reason: errMsg)
         }
     }
@@ -835,7 +1067,11 @@ public class Database2: Database {
         var blockStart: Int = 0
         var blockID: UInt32 = 0
         let writingProgress = ProgressEx()
-        writingProgress.localizedAdditionalDescription = NSLocalizedString("Writing encrypted blocks", comment: "Status message")
+        writingProgress.localizedAdditionalDescription = NSLocalizedString(
+            "[Database2/Progress] Writing encrypted blocks",
+            bundle: Bundle.framework,
+            value: "Writing encrypted blocks",
+            comment: "Progress bar status")
         writingProgress.totalUnitCount = Int64(inData.count)
         progress.addChild(writingProgress, withPendingUnitCount: ProgressSteps.writingBlocks)
         while blockStart != inData.count {
@@ -918,16 +1154,17 @@ public class Database2: Database {
         let moveOnly = !group.isDeleted && meta.isRecycleBinEnabled
         if moveOnly, let backupGroup = getBackupGroup(createIfMissing: meta.isRecycleBinEnabled) {
             Diag.debug("Moving group to RecycleBin")
-            parentGroup.remove(group: group)
-            backupGroup.add(group: group)
-            group.accessed()
-            group.locationChangedTime = Date.now
+            group.move(to: backupGroup) 
+            group.touch(.accessed, updateParents: false)
             
             group.isDeleted = true
             subGroups.forEach { $0.isDeleted = true }
             subEntries.forEach { $0.isDeleted = true }
         } else {
             Diag.debug("Removing the group permanently.")
+            if group === getBackupGroup(createIfMissing: false) {
+                meta?.resetRecycleBinGroupUUID()
+            }
             addDeletedObject(uuid: group.uuid)
             subGroups.forEach { addDeletedObject(uuid: $0.uuid) }
             subEntries.forEach { addDeletedObject(uuid: $0.uuid) }
@@ -951,8 +1188,8 @@ public class Database2: Database {
         if meta.isRecycleBinEnabled,
             let backupGroup = getBackupGroup(createIfMissing: meta.isRecycleBinEnabled)
         {
-            entry.accessed()
-            backupGroup.moveEntry(entry: entry)
+            entry.move(to: backupGroup) 
+            entry.touch(.accessed)
         } else {
             Diag.debug("Backup disabled, removing permanently.")
             addDeletedObject(uuid: entry.uuid)
